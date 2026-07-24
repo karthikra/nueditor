@@ -13,14 +13,12 @@ See `CLAUDE.md` for the full context. Each phase ships something runnable.
 
 ## Phase 1 — Debrand & de-service
 
-Execution docs live in `docs/debrand/` (start with `01-remove-clerk-convex.md`).
+Ordered execution queue in **`docs/debrand/`** (see `docs/debrand/README.md`):
+1. `01-remove-clerk-convex.md` — Clerk + Convex → local-only, no login.
+2. `02-remove-telemetry-sparkle.md` — Sentry/PostHog + Sparkle → no external calls.
+3. `03-rename-to-nueditor.md` — PalmierPro → NUEditor (`com.veeville.nueditor`).
 
-- Remove **Clerk + Convex** (auth + the closed generation broker) → editor runs local-only, no
-  login. → **`docs/debrand/01-remove-clerk-convex.md`**
-- Remove **Sentry / PostHog** (telemetry) and **Sparkle** (auto-update).
-- Rename **PalmierPro → NUEditor**: bundle id/subsystem, app name, `Resources/AppIcon.*`,
-  `Info.plist`, localization, changelog, and the MCP server/bundle name (`mcpb/`).
-- Result: a clean, unbranded, self-owned editor with a live MCP server and no external calls.
+Result: a clean, unbranded, self-owned editor with a live MCP server and no external calls.
 
 ## Phase 2 — NUEDIT drives the editor (MCP integration)
 
