@@ -90,27 +90,28 @@ struct LottieVideoGeneratorTests {
         let codec = try #require(formats.first.map { CMFormatDescriptionGetMediaSubType($0) })
         #expect(codec == kCMVideoCodecType_AppleProRes4444)
 
-        let gen = AVAssetImageGenerator(asset: asset)
-        gen.requestedTimeToleranceBefore = .zero
-        gen.requestedTimeToleranceAfter = .zero
-        nonisolated(unsafe) let unsafeGen = gen
-
-        func sample(_ seconds: Double) async throws -> (top: NSColor, bottom: NSColor) {
-            let frame = try await unsafeGen.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image
-            let rep = NSBitmapImageRep(cgImage: frame)
-            return (
-                try #require(rep.colorAt(x: frame.width / 4, y: frame.height / 4)),
-                try #require(rep.colorAt(x: frame.width * 3 / 4, y: frame.height * 3 / 4))
-            )
-        }
-
         // Pixels round-trip with correct orientation: red top-left, transparent/black bottom-right.
-        let start = try await sample(0)
-        #expect(start.top.redComponent > 0.7)
-        #expect(start.bottom.redComponent < 0.3)
+        let start = try await Self.sampleRed(videoURL: videoURL, seconds: 0)
+        #expect(start.top > 0.7)
+        #expect(start.bottom < 0.3)
 
         // Past the animation, the frozen last frame is still present (clip is extendable).
-        let frozen = try await sample(5)
-        #expect(frozen.top.redComponent > 0.7)
+        let frozen = try await Self.sampleRed(videoURL: videoURL, seconds: 5)
+        #expect(frozen.top > 0.7)
+    }
+
+    /// Builds its own generator so no main-actor-isolated AVFoundation object crosses domains.
+    nonisolated static func sampleRed(
+        videoURL: URL,
+        seconds: Double
+    ) async throws -> (top: Double, bottom: Double) {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: videoURL))
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        let frame = try await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image
+        let rep = NSBitmapImageRep(cgImage: frame)
+        let top = try #require(rep.colorAt(x: frame.width / 4, y: frame.height / 4))
+        let bottom = try #require(rep.colorAt(x: frame.width * 3 / 4, y: frame.height * 3 / 4))
+        return (top.redComponent, bottom.redComponent)
     }
 }
