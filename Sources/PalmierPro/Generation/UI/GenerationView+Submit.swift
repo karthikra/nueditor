@@ -4,7 +4,6 @@ import SwiftUI
 extension GenerationView {
 
     var canSubmit: Bool {
-        guard canAffordGeneration else { return false }
         if selectedType == .upscale {
             guard let source = upscaleSource,
                   source.sourceWidth != nil, source.sourceHeight != nil,
@@ -77,33 +76,11 @@ extension GenerationView {
         }
     }
 
-    private var remainingCredits: Int? {
-        guard let budget = AccountService.shared.budgetCredits else { return nil }
-        return max(0, budget - AccountService.shared.spentCredits)
-    }
-
-    private var hasInsufficientCredits: Bool {
-        guard let cost = estimatedCost, let left = remainingCredits else { return false }
-        return cost > left
-    }
-
-    private var canAffordGeneration: Bool {
-        guard let left = remainingCredits else { return true }
-        if let cost = estimatedCost { return cost <= left }
-        return left > 0
-    }
-
     private var costHelpText: String {
         guard let cost = estimatedCost else {
             return "Estimated cost. Actual billing may differ slightly."
         }
-        guard let left = remainingCredits else {
-            return "\(cost) credits estimated. Actual billing may differ."
-        }
-        if cost > left {
-            return "\(cost) credits needed. Only \(left.formatted()) remaining."
-        }
-        return "\(cost) credits. \((left - cost).formatted()) credits remaining after this generation."
+        return "\(cost) credits estimated. Actual billing may differ."
     }
 
     var costEstimateLabel: some View {
@@ -115,16 +92,13 @@ extension GenerationView {
                 .monospacedDigit()
                 .lineLimit(1)
         }
-        .foregroundStyle(hasInsufficientCredits ? .red : AppTheme.Text.secondaryColor)
+        .foregroundStyle(AppTheme.Text.secondaryColor)
         .help(costHelpText)
     }
 
     var submitButton: some View {
-        Button {
-            if aiAllowed { submitGeneration() }
-            else if !account.isMisconfigured { Task { await account.signInWithGoogle() } }
-        } label: {
-            Image(systemName: aiAllowed ? "arrow.up" : "person.crop.circle")
+        Button { submitGeneration() } label: {
+            Image(systemName: "arrow.up")
                 .font(.system(size: AppTheme.FontSize.sm, weight: .bold))
                 .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
         }
@@ -132,12 +106,12 @@ extension GenerationView {
         .buttonBorderShape(.circle)
         .controlSize(.regular)
         .tint(AppTheme.Accent.primary)
-        .accessibilityLabel(aiAllowed ? (selectedType == .upscale ? "Upscale" : "Generate") : "Sign in")
-        .disabled(aiAllowed ? !canSubmit : account.isMisconfigured || account.isSigningIn)
-        .opacity((aiAllowed ? canSubmit : !account.isMisconfigured && !account.isSigningIn) ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
+        .accessibilityLabel(selectedType == .upscale ? "Upscale" : "Generate")
+        .disabled(!aiAllowed || !canSubmit)
+        .opacity(aiAllowed && canSubmit ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
         .help(aiAllowed
             ? (selectedType == .upscale ? "Upscale source media" : "")
-            : (account.isMisconfigured ? "AI is unavailable" : account.isSigningIn ? "Opening Google" : "Sign in to generate"))
+            : "AI is unavailable")
     }
 
     // MARK: - Actions
@@ -230,10 +204,6 @@ extension GenerationView {
     }
 
     private func submitGeneration() {
-        if currentModelLocked {
-            SettingsWindowController.shared.show(tab: .account)
-            return
-        }
         let audioDuration: Int = {
             guard selectedType == .audio else { return 0 }
             if audioUsesSource { return effectiveAudioSourceSeconds }
