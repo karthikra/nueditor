@@ -13,8 +13,10 @@ Each phase ships something runnable.
 
 ## Phase 1 — Debrand & de-service
 
+Execution docs live in `docs/debrand/` (start with `01-remove-clerk-convex.md`).
+
 - Remove **Clerk + Convex** (auth + the closed generation broker) → editor runs local-only, no
-  login.
+  login. → **`docs/debrand/01-remove-clerk-convex.md`**
 - Remove **Sentry / PostHog** (telemetry) and **Sparkle** (auto-update).
 - Rename **PalmierPro → NUEDIT**: bundle id/subsystem, app name, `Resources/AppIcon.*`,
   `Info.plist`, localization, changelog, and the MCP server/bundle name (`mcpb/`).
