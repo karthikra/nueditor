@@ -112,9 +112,6 @@ private struct SettingsDetail: View {
                                 SettingsSection(title: "Notifications") {
                                     NotificationsPane()
                                 }
-                                SettingsSection(title: "Privacy & Diagnostics") {
-                                    PrivacyPane()
-                                }
                             case .models:
                                 ModelsPane()
                             case .agent:
