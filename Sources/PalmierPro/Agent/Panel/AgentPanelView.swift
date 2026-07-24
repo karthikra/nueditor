@@ -256,41 +256,10 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var errorBanner: some View {
         if let err = service.streamError {
-            HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Text(err.localizedDescription)
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.leading)
-                if let cta = errorCTA(for: err) {
-                    Button(action: cta.action) {
-                        Text(cta.title)
-                            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                    }
-                    .buttonStyle(.capsule(.secondary))
-                    .controlSize(.small)
-                }
-            }
-        }
-    }
-
-    private struct ErrorCTA {
-        let title: String
-        let action: () -> Void
-    }
-
-    private func errorCTA(for error: PalmierClientError?) -> ErrorCTA? {
-        guard let error else { return nil }
-        switch error {
-        case .unauthenticated:
-            return ErrorCTA(title: "Sign in") {
-                SettingsWindowController.shared.show(tab: .account)
-            }
-        case .insufficientCredits:
-            return ErrorCTA(title: "View plans") {
-                SettingsWindowController.shared.show(tab: .account)
-            }
-        case .upstream:
-            return nil
+            Text(err.localizedDescription)
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(.red)
+                .multilineTextAlignment(.leading)
         }
     }
 
@@ -317,52 +286,16 @@ struct AgentPanelView: View {
 
     @ViewBuilder
     private var missingKeyState: some View {
-        let account = AccountService.shared
         VStack(spacing: AppTheme.Spacing.mdLg) {
-            Button {
-                missingKeyPrimaryAction(account: account)
-            } label: {
-                Label(missingKeyPrimaryLabel(account: account), systemImage: missingKeyPrimaryIcon(account: account))
+            Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
+                Label("Add an Anthropic API key", systemImage: "key.fill")
                     .font(.system(size: AppTheme.FontSize.mdLg, weight: .semibold))
             }
             .buttonStyle(.capsule(.prominent, size: .regular))
 
-            if !account.isSignedIn {
-                Text("First-time sign-ups only")
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Text.mutedColor)
-            }
-
-            Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text("or use your own Anthropic key")
-                    .underline()
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .padding(.horizontal, AppTheme.Spacing.sm)
-                    .padding(.vertical, AppTheme.Spacing.xxs)
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: AppTheme.FontSize.smMd, weight: .medium))
-            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
-        }
-    }
-
-    private func missingKeyPrimaryLabel(account: AccountService) -> LocalizedStringKey {
-        if !account.isSignedIn { return "Log in for 250 free credits" }
-        if !account.isPaid { return "Subscribe" }
-        return "Open Settings"
-    }
-
-    private func missingKeyPrimaryIcon(account: AccountService) -> String {
-        if !account.isSignedIn { return "gift.fill" }
-        if !account.isPaid { return "sparkles" }
-        return "gearshape"
-    }
-
-    private func missingKeyPrimaryAction(account: AccountService) {
-        if !account.isSignedIn {
-            Task { await account.signInWithGoogle() }
-        } else {
-            SettingsWindowController.shared.show(tab: .account)
+            Text("The agent runs against your own key.")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.mutedColor)
         }
     }
 

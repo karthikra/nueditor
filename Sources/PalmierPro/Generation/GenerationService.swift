@@ -1,6 +1,5 @@
 import Foundation
 @preconcurrency import Combine
-@preconcurrency import ConvexMobile
 
 /// Used by replace-clip callbacks so only the
 /// first successful asset of an N-image generation swaps the clip
@@ -304,12 +303,8 @@ final class GenerationService {
     }
 
     private func backendError(_ error: Error) -> (code: String?, message: String) {
-        struct Payload: Decodable { let code: String?; let message: String? }
-        if case let ClientError.ConvexError(data) = error,
-           let json = data.data(using: .utf8),
-           let payload = try? JSONDecoder().decode(Payload.self, from: json),
-           let message = payload.message {
-            return (payload.code, message)
+        if case let BackendError.api(_, code, message) = error {
+            return (code, message)
         }
         return (nil, error.localizedDescription)
     }

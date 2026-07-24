@@ -33,7 +33,9 @@ final class SampleProjectService {
         }
     }
 
-    private var baseURL: URL? { BackendConfig.convexHttpURL }
+    /// Samples were served by the hosted backend. Until NUEDIT publishes an endpoint
+    /// there is no host, so listing throws and the Home strip stays hidden.
+    private var baseURL: URL? { nil }
 
     // MARK: - Listing
 

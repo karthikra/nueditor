@@ -30,10 +30,7 @@ struct FeedbackView: View {
         email.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var hasReplyEmail: Bool {
-        if account.isSignedIn { return account.account?.user.email != nil }
-        return !trimmedEmail.isEmpty
-    }
+    private var hasReplyEmail: Bool { !trimmedEmail.isEmpty }
 
     private var canSubmit: Bool {
         !isSending
@@ -62,9 +59,7 @@ struct FeedbackView: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             descriptionField
 
-            if !account.isSignedIn {
-                emailField
-            }
+            emailField
 
             mayContactRow
 
@@ -176,11 +171,7 @@ struct FeedbackView: View {
     }
 
     private var contextNoteText: String {
-        if account.isSignedIn {
-            return "App version \(Self.appVersion) and macOS \(Self.osVersion) are included."
-        } else {
-            return "App version \(Self.appVersion) and macOS \(Self.osVersion) are included."
-        }
+        "App version \(Self.appVersion) and macOS \(Self.osVersion) are included."
     }
 
     private var footer: some View {
@@ -234,8 +225,7 @@ struct FeedbackView: View {
     }
 
     private var successDetailText: String {
-        let replyAddr = account.account?.user.email
-            ?? (trimmedEmail.isEmpty ? nil : trimmedEmail)
+        let replyAddr = trimmedEmail.isEmpty ? nil : trimmedEmail
         if let replyAddr, mayContact {
             return "We read every message and may reach out at \(replyAddr)."
         }

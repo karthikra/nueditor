@@ -9,20 +9,19 @@ extension TimelineView {
         let submenu = NSMenu()
         submenu.autoenablesItems = false
         let aiAllowed = editor.aiEditAllowed
-        let isPaid = AccountService.shared.isPaid
         for action in actions {
             switch action {
             case .upscale:
-                let upscaleItem = NSMenuItem(title: isPaid ? "Upscale…" : "Upscale… (Paid)", action: #selector(performAIEditUpscale(_:)), keyEquivalent: "")
+                let upscaleItem = NSMenuItem(title: "Upscale…", action: #selector(performAIEditUpscale(_:)), keyEquivalent: "")
                 upscaleItem.target = self
                 upscaleItem.representedObject = clipId
-                upscaleItem.isEnabled = aiAllowed && isPaid
+                upscaleItem.isEnabled = aiAllowed
                 submenu.addItem(upscaleItem)
             case .edit:
-                let item = NSMenuItem(title: isPaid ? "Edit…" : "Edit… (Paid)", action: #selector(performAIEditEdit(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: "Edit…", action: #selector(performAIEditEdit(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = clipId
-                item.isEnabled = aiAllowed && isPaid
+                item.isEnabled = aiAllowed
                 submenu.addItem(item)
             case .generateMusic, .generateSFX:
                 let kind: VideoToAudioEditKind = action == .generateMusic ? .music : .sfx
@@ -57,10 +56,8 @@ extension TimelineView {
         if !audioTransforms.isEmpty {
             if !submenu.items.isEmpty { submenu.addItem(.separator()) }
             for kind in audioTransforms {
-                let paidBlocked = kind.model?.paidOnly == true && !isPaid
-                let title = paidBlocked ? "\(kind.menuTitle) (Paid)" : kind.menuTitle
                 let item = NSMenuItem(
-                    title: title,
+                    title: kind.menuTitle,
                     action: #selector(performAIEditAudioTransform(_:)),
                     keyEquivalent: ""
                 )
@@ -69,7 +66,7 @@ extension TimelineView {
                     "clipId": clipId,
                     "kind": kind == .cleanup ? "cleanup" : "dubbing",
                 ]
-                item.isEnabled = aiAllowed && !paidBlocked
+                item.isEnabled = aiAllowed
                 submenu.addItem(item)
             }
         }

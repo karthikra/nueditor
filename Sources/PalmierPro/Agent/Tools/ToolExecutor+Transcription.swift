@@ -377,12 +377,7 @@ extension ToolExecutor {
                                 preferredLocale: context.preferredLocale
                             )))
                         case .cloud:
-                            return (url, .success(try await CloudTranscription.transcribe(
-                                fileURL: url,
-                                range: rangesByURL[url],
-                                preferredLocale: nil,
-                                projectId: projectId
-                            )))
+                            throw BackendError.notConfigured
                         }
                     } catch {
                         return (url, .failure(error))

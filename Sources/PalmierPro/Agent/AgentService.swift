@@ -38,11 +38,7 @@ final class AgentService {
 
     var hasApiKey: Bool { !apiKey.isEmpty }
 
-    var canStream: Bool {
-        if hasApiKey { return true }
-        let account = AccountService.shared
-        return account.isSignedIn && account.hasCredits
-    }
+    var canStream: Bool { hasApiKey }
 
     var availableModels: [AnthropicModel] {
         if hasApiKey { return AnthropicModel.allCases }
@@ -50,12 +46,8 @@ final class AgentService {
     }
 
     private func selectClient() -> (any AgentClient)? {
-        let chosen = effectiveModel
-        if hasApiKey { return AnthropicClient(apiKey: apiKey, model: chosen) }
-        if AccountService.shared.isSignedIn {
-            return PalmierClient(model: chosen)
-        }
-        return nil
+        guard hasApiKey else { return nil }
+        return AnthropicClient(apiKey: apiKey, model: effectiveModel)
     }
 
     var effectiveModel: AnthropicModel {
@@ -78,7 +70,7 @@ final class AgentService {
     var currentSessionId: UUID?
     var messages: [AgentMessage] = []
     var isStreaming: Bool = false
-    var streamError: PalmierClientError?
+    var streamError: AgentStreamError?
     var onSessionsChanged: (@MainActor () -> Void)?
 
     var draft: String = ""
@@ -298,7 +290,7 @@ final class AgentService {
 
     func send(text: String, mentions: [AgentMention]) {
         guard canStream else {
-            streamError = .upstream("Sign in to a paid plan or add an Anthropic API key to start.")
+            streamError = AgentStreamError(message: "Add an Anthropic API key in Settings to start.")
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -354,7 +346,7 @@ final class AgentService {
 
     private func runLoop() async {
         guard let client = selectClient() else {
-            streamError = .upstream("No backend available.")
+            streamError = AgentStreamError(message: "No agent client available.")
             return
         }
         await SkillStore.shared.reloadInBackground()
@@ -398,13 +390,9 @@ final class AgentService {
             } catch is CancellationError {
                 dropEmptyAssistantTurn(id: assistantID)
                 break loop
-            } catch let err as PalmierClientError {
-                dropEmptyAssistantTurn(id: assistantID)
-                streamError = err
-                break loop
             } catch {
                 dropEmptyAssistantTurn(id: assistantID)
-                streamError = .upstream(error.localizedDescription)
+                streamError = AgentStreamError(message: error.localizedDescription)
                 break loop
             }
         }

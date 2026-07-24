@@ -198,10 +198,8 @@ struct AIEditTab: View {
             for: asset,
             effectiveDurationOverride: effectiveDurationForAvailability
         )
-        let paidBlocked = (action == .upscale || action == .edit) && !account.isPaid
-        let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
-        let disabledReason = aiDisabledReason
-            ?? (paidBlocked ? "Requires a paid plan" : availability.reason)
+        let isEnabled = availability.isAvailable && aiDisabledReason == nil
+        let disabledReason = aiDisabledReason ?? availability.reason
 
         descriptiveActionRow(
             icon: icon,
@@ -227,15 +225,12 @@ struct AIEditTab: View {
 
     @ViewBuilder
     private func audioTransformActionRow(kind: AudioTransformEditKind) -> some View {
-        let model = kind.model
         let availability = kind.availability(
             for: asset,
             effectiveDurationOverride: effectiveDurationForAvailability
         )
-        let paidBlocked = model?.paidOnly == true && !account.isPaid
-        let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
-        let disabledReason = aiDisabledReason
-            ?? (paidBlocked ? "Requires a paid plan" : availability.reason)
+        let isEnabled = availability.isAvailable && aiDisabledReason == nil
+        let disabledReason = aiDisabledReason ?? availability.reason
 
         descriptiveActionRow(
             icon: kind.iconName,
@@ -397,9 +392,7 @@ struct AIEditTab: View {
     private var shouldReplace: Bool { replaceClipSource && clipId != nil }
 
     private var aiDisabledReason: String? {
-        if account.isMisconfigured { return "AI is unavailable" }
-        if !account.isSignedIn { return "Sign in to use AI" }
-        return nil
+        account.aiAllowed ? nil : "AI is unavailable"
     }
 
 }

@@ -13,15 +13,7 @@ struct AIEditMenu: View {
         } else {
             Menu("AI Edit") {
                 if availableActions.contains(.upscale) {
-                    if AccountService.shared.isPaid {
-                        Button("Upscale…") { runUpscale() }
-                    } else {
-                        Button {
-                            SettingsWindowController.shared.show(tab: .account)
-                        } label: {
-                            Label("Upscale… (Paid)", systemImage: "lock.fill")
-                        }
-                    }
+                    Button("Upscale…") { runUpscale() }
                 }
                 if availableActions.contains(.edit) {
                     Button("Edit…") { edit() }
@@ -51,10 +43,7 @@ struct AIEditMenu: View {
         }
     }
 
-    private var aiAllowed: Bool {
-        let account = AccountService.shared
-        return account.isSignedIn && !account.isMisconfigured
-    }
+    private var aiAllowed: Bool { AccountService.shared.aiAllowed }
 
     private var availableActions: [EditAction] {
         EditAction.available(for: asset)
