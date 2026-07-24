@@ -17,7 +17,7 @@ plain editor; NUEDIT adds the intelligence NUEditor lacks (A-roll/B-roll, script
   │ NUEDIT — FastAPI :8000 (GPU 1)             │         │ NUEditor.app (Swift + Metal)             │
   │  ingest · VLM caption · transcript ·       │  MCP    │  timeline engine · compositing · render  │
   │  search · A/B-roll (Light-ASD) · script    │ (HTTP   │  transcript/caption edit · color/effects │
-  │  match · B-roll assoc · assemble_timeline  │ JSON-   │  export (fcpxml/xml/palmier)             │
+  │  match · B-roll assoc · assemble_timeline  │ JSON-   │  export (fcpxml/xml/nueditor)             │
   │  Web UI (HTMX) · /api/v1 (JWT, tenant)     │ RPC)    │  MCP server :19789  ◄────────────────────┤ drives
   │  Postgres (docker) · Alembic               │◄───────▶│  on-device: MLX, transcription, search   │
   │  MCP client → NUEditor (services/palmier)  │  via    │                                          │
@@ -41,7 +41,7 @@ plain editor; NUEDIT adds the intelligence NUEditor lacks (A-roll/B-roll, script
 
 ## Capability matrix
 
-Status: ✅ works now · 🔧 to build · ⚠️ present upstream, being removed in debrand.
+Status: ✅ works now · 🔧 to build.
 
 | Capability | Runs where | Owner | Status |
 |---|---|---|---|
@@ -59,14 +59,14 @@ Status: ✅ works now · 🔧 to build · ⚠️ present upstream, being removed
 | Clip ops (add/insert/move/split/ripple), multicam | Mac | NUEditor | ✅ |
 | Transcript/caption editing, word-level cuts | Mac | NUEditor | ✅ |
 | Color grade, effects, transforms, keyframes | Mac | NUEditor | ✅ |
-| Export (video H.264/265/ProRes, xml, fcpxml, palmier) | Mac | NUEditor | ✅ |
+| Export (video H.264/265/ProRes, xml, fcpxml, **nueditor**) | Mac | NUEditor | ✅ (mode renamed from `palmier`) |
 | **MCP server** (~20 tools) | Mac `:19789` | NUEditor | ✅ |
-| On-device transcription + search (siglip2) | Mac | NUEditor | ✅ (search model URL → decision) |
-| Login / accounts (Clerk) | (hosted) | — | ⚠️ removing → local-only |
-| Cloud backend + cloud transcription (Convex) | (hosted) | — | ⚠️ removing |
-| In-app hosted agent chat | (hosted) | — | ⚠️ off; revisit local |
-| Closed generation (Seedance/Kling via Convex) | (hosted) | — | ⚠️ removing → NUEDIT owns |
-| Telemetry (Sentry/PostHog), auto-update (Sparkle) | Mac | — | ⚠️ removing |
+| On-device transcription + search (siglip2) | Mac | NUEditor | ✅ (model URL still upstream — mirror pending) |
+| Login / accounts (Clerk) | — | — | ✅ removed → local-only, no login |
+| Cloud backend + cloud transcription (Convex) | — | — | ✅ removed |
+| In-app hosted agent chat | Mac | NUEditor | ✅ now runs on the user's own Anthropic key |
+| Closed generation (Seedance/Kling via Convex) | — | — | ✅ removed → NUEDIT owns (Phase 3) |
+| Telemetry (Sentry/PostHog), auto-update (Sparkle) | — | — | ✅ removed → no external calls |
 | **NUEDIT → NUEditor MCP client** (push assembly) | Tower | NUEDIT | 🔧 Phase 2 |
 | ms ↔ frame mapping, footage↔mediaRef map | Tower | NUEDIT | 🔧 Phase 2 |
 | **Owned generation** (fal/Modal/nano-banana → import_media) | Tower | NUEDIT | 🔧 Phase 3 |
@@ -88,8 +88,9 @@ footage → [NUEDIT tower] ingest → caption → transcript → search index
 
 ## What's to be built (see `docs/NUEDIT_ROADMAP.md`)
 
-1. **Debrand** (Mac, in progress) — remove Clerk/Convex/telemetry/Sparkle, rename → NUEditor,
-   local-only. `docs/debrand/`.
+1. **Debrand** (Mac) — ✅ **done**. Clerk/Convex/telemetry/Sparkle removed, renamed → NUEditor
+   (`com.veeville.nueditor`), local-only. `docs/debrand/`. Two upstream ties remain: the siglip2
+   model URL and the skills catalog repo.
 2. **Phase 2 — MCP integration** (Tower) — `app/services/palmier.py` (MCP client),
    `app/core/palmier_map.py` (pure ms↔frame), push a real assembled timeline into NUEditor, read
    back. Spec: NUEDIT repo `docs/superpowers/specs/2026-07-24-palmier-mcp-integration-design.md`.
@@ -105,3 +106,17 @@ footage → [NUEDIT tower] ingest → caption → transcript → search index
 - **NUEDIT owns intelligence + generation; NUEditor owns editing + render + export.** Build each
   capability in exactly one place.
 - **Units:** NUEDIT ms ↔ NUEditor project frames (`round(ms/1000*fps)`).
+
+## Contract changes NUEDIT must absorb (from the debrand)
+
+The MCP port, tool names and schemas are otherwise unchanged. These are not:
+
+- **`export_project` mode `palmier` → `nueditor`.** The enum value and the project package
+  extension both changed; `.palmier` packages no longer open. Any tower-side call passing
+  `mode: "palmier"` will now fail validation.
+- **MCP server identity is `nueditor`** (was `palmier-pro`), and the Claude Desktop connector
+  ships as `nueditor.mcpb`. Resource URIs are `nueditor://models/*`.
+- **`canGenerate` is permanently false** until Phase 3 — generation and upscale tools reject.
+  Tool descriptions no longer tell the user to sign in; they report the capability as unavailable.
+- **`send_feedback` returns a terminal error** — there is no report sink. It validates and logs
+  locally rather than returning a success receipt.
