@@ -65,6 +65,13 @@ enum AnthropicClientError: LocalizedError {
     }
 }
 
+/// Terminal failure of an agent stream, surfaced in the panel's error banner.
+struct AgentStreamError: LocalizedError, Sendable {
+    let message: String
+
+    var errorDescription: String? { message }
+}
+
 // MARK: - Client protocol
 
 protocol AgentClient: Sendable {
