@@ -18,15 +18,4 @@ final class AccountService {
 
     /// Gate for every hosted-AI affordance in the UI.
     var aiAllowed: Bool { false }
-
-    func sendFeedback(
-        message: String,
-        email: String?,
-        mayContact: Bool,
-        screenshotPngBase64: String?,
-        appVersion: String,
-        osVersion: String
-    ) async throws {
-        throw BackendError.notConfigured
-    }
 }

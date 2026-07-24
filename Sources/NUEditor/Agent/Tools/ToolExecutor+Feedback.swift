@@ -63,30 +63,13 @@ extension ToolExecutor {
             lines.append("- Project: \(projectId.prefix(8))")
         }
 
-        do {
-            try await AccountService.shared.sendFeedback(
-                message: lines.joined(separator: "\n"),
-                email: nil,
-                mayContact: false,
-                screenshotPngBase64: nil,
-                appVersion: Self.appVersion,
-                osVersion: Self.osVersion
-            )
-        } catch {
-            return .error("Couldn't send feedback: \(error.localizedDescription)")
-        }
+        // No report sink yet: validate and log locally so the agent gets a terminal,
+        // non-success answer instead of a receipt for something nobody received.
+        Log.agent.notice("send_feedback (no sink) category=\(category) summary=\(summary)")
         feedbackState.sentKeys.insert(dedupeKey)
-        return .ok("Filed this report. Thanks — this helps us improve the agent.")
-    }
-
-    private static var appVersion: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-        return "\(version) (\(build))"
-    }
-
-    private static var osVersion: String {
-        let v = ProcessInfo.processInfo.operatingSystemVersion
-        return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+        return .error(
+            "Feedback reporting is unavailable in this build — nothing was sent. "
+            + "Tell the user what you found instead."
+        )
     }
 }
