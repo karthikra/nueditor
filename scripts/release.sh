@@ -11,7 +11,6 @@ set -euo pipefail
 #   5. Commit + push version bump
 #   6. Tag + push tag
 #   7. gh release create with the DMG and notes
-#   8. Update appcast.xml + commit + push
 #
 # Bails out before anything public-visible if a preflight check fails.
 
@@ -30,7 +29,6 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLIST="$ROOT/Sources/PalmierPro/Resources/Info.plist"
-APPCAST="$ROOT/appcast.xml"
 DMG="$ROOT/.build/PalmierPro.dmg"
 cd "$ROOT"
 
@@ -84,35 +82,12 @@ echo "==> Bumping version"
 CURRENT_BUILD="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")"
 NEW_BUILD=$((CURRENT_BUILD + 1))
 
-MAX_PUBLISHED="$(grep -oE '<sparkle:version>[0-9]+</sparkle:version>' "$APPCAST" \
-  | grep -oE '[0-9]+' | sort -n | tail -1)"
-if [ -n "$MAX_PUBLISHED" ] && [ "$NEW_BUILD" -le "$MAX_PUBLISHED" ]; then
-  echo "error: NEW_BUILD=$NEW_BUILD is not greater than max published sparkle:version=$MAX_PUBLISHED" >&2
-  echo "       Info.plist CFBundleVersion ($CURRENT_BUILD) was likely rolled back by an unrelated commit." >&2
-  echo "       Set CFBundleVersion to $MAX_PUBLISHED in $PLIST and retry." >&2
-  exit 1
-fi
-
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD" "$PLIST"
 echo "    $VERSION (build $NEW_BUILD)"
 
 echo "==> Building signed + notarized DMG"
-BUILD_LOG="$(mktemp -t palmier-build.XXXXXX).log"
-trap 'rm -f "$NOTES_CLEAN" "$BUILD_LOG"' EXIT
-./scripts/bundle.sh release --dist 2>&1 | tee "$BUILD_LOG"
-
-# Only match the real signature line (which has length="<digits>"), not the
-# instruction hint text that bundle.sh also prints.
-SIG_LINE="$(grep -E 'edSignature="[^"]+".*length="[0-9]+"' "$BUILD_LOG" | tail -1)"
-SIGNATURE="$(echo "$SIG_LINE" | sed -E 's/.*edSignature="([^"]+)".*/\1/')"
-LENGTH="$(echo "$SIG_LINE" | sed -E 's/.*length="([0-9]+)".*/\1/')"
-if [ -z "$SIGNATURE" ] || ! [[ "$LENGTH" =~ ^[0-9]+$ ]]; then
-  echo "error: couldn't extract Sparkle signature or numeric length from build output" >&2
-  echo "  got SIGNATURE=$SIGNATURE" >&2
-  echo "  got LENGTH=$LENGTH" >&2
-  exit 1
-fi
+./scripts/bundle.sh release --dist
 
 echo "==> Committing + pushing version bump"
 git add "$PLIST"
@@ -125,43 +100,6 @@ git push origin "$TAG"
 
 echo "==> Creating GH release"
 gh release create "$TAG" "$DMG" --title "$TAG" --notes-file "$NOTES_CLEAN"
-
-echo "==> Updating appcast.xml"
-PUBDATE="$(date -R)"
-export VERSION NEW_BUILD PUBDATE LENGTH SIGNATURE
-python3 <<'PYEOF'
-import os
-v = os.environ["VERSION"]
-b = os.environ["NEW_BUILD"]
-d = os.environ["PUBDATE"]
-l = os.environ["LENGTH"]
-s = os.environ["SIGNATURE"]
-url = f"https://github.com/palmier-io/palmier-pro/releases/download/v{v}/PalmierPro.dmg"
-
-item = f"""        <item>
-            <title>Version {v}</title>
-            <pubDate>{d}</pubDate>
-            <sparkle:version>{b}</sparkle:version>
-            <sparkle:shortVersionString>{v}</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <enclosure
-                url="{url}"
-                length="{l}"
-                type="application/octet-stream"
-                sparkle:edSignature="{s}"/>
-        </item>"""
-
-path = "appcast.xml"
-with open(path) as f:
-    content = f.read()
-content = content.replace("    </channel>", item + "\n    </channel>")
-with open(path, "w") as f:
-    f.write(content)
-PYEOF
-
-git add "$APPCAST"
-git commit -m "Add $TAG to appcast"
-git push origin main
 
 echo ""
 echo "==> Released $TAG"

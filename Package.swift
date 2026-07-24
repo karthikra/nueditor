@@ -13,7 +13,6 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.11.0"),
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.7.0"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.3.3"),
         .package(url: "https://github.com/ml-explore/mlx-swift", exact: "0.31.5"),
         .package(url: "https://github.com/airbnb/lottie-ios", from: "4.6.1"),
@@ -24,7 +23,6 @@ let package = Package(
             name: "PalmierPro",
             dependencies: [
                 .product(name: "MCP", package: "swift-sdk"),
-                .product(name: "Sparkle", package: "Sparkle"),
                 .product(name: "Tokenizers", package: "swift-transformers"),
                 .product(name: "Lottie", package: "lottie-ios"),
                 .product(

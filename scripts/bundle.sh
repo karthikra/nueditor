@@ -46,7 +46,6 @@ echo "==> Building ($CONFIG)"
 BUILD_ARGS=(-c "$CONFIG" --traits BundledSpeech)
 swift build "${BUILD_ARGS[@]}"
 BIN="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)/PalmierPro"
-SPARKLE_FW="$ROOT/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 
 echo "==> Assembling $APP"
 rm -rf "$APP"
@@ -55,7 +54,6 @@ cp "$BIN" "$APP/Contents/MacOS/PalmierPro"
 cp "$RESOURCES/Info.plist" "$APP/Contents/Info.plist"
 
 cp "$RESOURCES/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
 
 # Flatten SwiftPM's resource bundle into the app's Resources tree.
 RES_BUNDLE="$(dirname "$BIN")/PalmierPro_PalmierPro.bundle"
@@ -146,24 +144,6 @@ if [ "$MODE" = "dev" ]; then
   exit 0
 fi
 
-echo "==> Codesigning nested Sparkle helpers"
-SPARKLE_CURRENT="$APP/Contents/Frameworks/Sparkle.framework/Versions/Current"
-for helper in \
-    "$SPARKLE_CURRENT/Autoupdate" \
-    "$SPARKLE_CURRENT/Updater.app/Contents/MacOS/Updater" \
-    "$SPARKLE_CURRENT/Updater.app" \
-    "$SPARKLE_CURRENT/XPCServices/Downloader.xpc/Contents/MacOS/Downloader" \
-    "$SPARKLE_CURRENT/XPCServices/Downloader.xpc" \
-    "$SPARKLE_CURRENT/XPCServices/Installer.xpc/Contents/MacOS/Installer" \
-    "$SPARKLE_CURRENT/XPCServices/Installer.xpc"; do
-  [ -e "$helper" ] && codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$helper"
-done
-
-echo "==> Codesigning Sparkle framework"
-codesign --force --options runtime --timestamp \
-  --sign "$SIGNING_IDENTITY" \
-  "$APP/Contents/Frameworks/Sparkle.framework"
-
 echo "==> Embedding provisioning profile"
 if [ ! -f "$PROVISION_PROFILE" ]; then
   echo "!! provisioning profile not found at $PROVISION_PROFILE" >&2
@@ -220,19 +200,7 @@ xcrun notarytool submit "$DMG" \
 echo "==> Stapling DMG"
 xcrun stapler staple "$DMG"
 
-echo "==> Signing DMG with Sparkle EdDSA key"
-SPARKLE_SIG="$("$ROOT/.build/artifacts/sparkle/Sparkle/bin/sign_update" "$DMG")"
-
 echo ""
 echo "==> Done"
 echo "   App: $APP"
 echo "   DMG: $DMG"
-echo ""
-echo "Sparkle signature for appcast entry:"
-echo "  $SPARKLE_SIG"
-echo ""
-echo "Add an <item> to appcast.xml with:"
-echo "  - version, shortVersionString from Info.plist"
-echo "  - url pointing at the GitHub Release download"
-echo "  - length=$(stat -f%z "$DMG")"
-echo "  - the sparkle:edSignature from above"
