@@ -42,6 +42,22 @@ Compile-loop against the build; branch `debrand/rename-nueditor`.
 - **`Telemetry/*`** — removed in task 02; if any file remains, drop the old id.
 - App icon (`Resources/AppIcon.*`), localization strings, changelog — swap Palmier branding.
 
+## Also: palmier URLs still in compiled code / scripts
+
+The config/docs URLs are **already removed on `main`** (SUFeedURL + `appcast.xml`, `changelog.json`,
+`mcpb` author/homepage, README/CONTRIBUTING, localized `docs/readme/`). These remain in Swift/scripts
+— handle here with the compiler:
+- **`Search/SearchIndexConfig.swift`** — `hostedURL = huggingface.co/palmier-io/siglip2-base-coreml`.
+  **DECISION NEEDED (functional, not cosmetic):** this is the CoreML embedding model NUEditor
+  downloads for semantic search. Do NOT blind-swap — either rehost the model under our own
+  HF/CDN and repoint, or point at upstream `google/siglip2` and convert. Breaking this breaks
+  in-app search.
+- **`Settings/Skill/SkillsPane.swift`** + **`Agent/Skills/SkillCatalog.swift`** — link/pull from
+  `palmier-io/palmier-skills`. Point at our own skills repo or disable the skills feature.
+- **`Editor/Tour/TourOverlay.swift`** — `docsURL = https://palmier.io/docs` → our docs or remove.
+- **`scripts/release.sh`** — release DMG/tag URLs → our repo (or drop if we don't publish DMGs).
+- **`models/siglip2/{README,MODEL_CARD}.md`** — palmier attribution/links → update.
+
 ## Verify
 
 - `swift build` green (+ `--traits BundledSpeech`); `swift test` green.

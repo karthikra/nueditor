@@ -1,37 +1,17 @@
 # Contributing
 
-## How to contribute
+NUEditor (fork of Palmier Pro, GPLv3) — internal Veeville project.
 
-The best way to contribute is to open a Github issue. Bug reports, feature requests, ideas are welcome.
+## Prerequisites
+- macOS 26+, Xcode 16+, Swift 6.2 toolchain
 
-With AI coding, human reviews are the bottleneck. We don't have the bandwidth to review large unsolicited PRs.
-
-## Getting Started
-
-### Prerequisites
-- macOS 26+
-- Xcode 16+
-- Swift 6.2 toolchain
-
-### Develop
+## Develop
 ```bash
-git clone https://github.com/palmier-io/palmier-pro
-cd palmier-pro
-
-swift build
-swift run
-```
-
-For a bundled debug build that launches the `.app` and streams OSLog:
-
-```bash
-./scripts/dev.sh
-```
-
-## Test
-
-```bash
+git clone https://github.com/karthikra/nueditor
+cd nueditor
+swift build && swift run
+./scripts/dev.sh    # bundled debug .app + OSLog stream
 swift test
 ```
 
-By contributing, you agree your contributions are licensed under [GPLv3](LICENSE).
+Contributions are licensed under [GPLv3](LICENSE).

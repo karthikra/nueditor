@@ -7,10 +7,10 @@
   "long_description": "Connects Claude Desktop to the local MCP server inside Palmier Pro — an AI-native Mac video editor. Once installed, Claude can read your timeline, edit clips, generate media, and manage tracks.",
   "icon": "icon.png",
   "author": {
-    "name": "Palmier",
-    "url": "https://palmier.io"
+    "name": "NUEditor",
+    "url": "https://github.com/karthikra/nueditor"
   },
-  "homepage": "https://palmier.io",
+  "homepage": "https://github.com/karthikra/nueditor",
   "keywords": ["video", "editor", "timeline", "creative", "media"],
   "compatibility": {
     "platforms": ["darwin"],
