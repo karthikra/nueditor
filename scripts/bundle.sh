@@ -33,30 +33,30 @@ if [ -f "$ROOT/$ENV_FILE" ]; then
   set +a
 fi
 
-SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Palmier, Inc. (MMFLRC7562)}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-palmier-notary}"
-PROVISION_PROFILE="${PROVISION_PROFILE:-$ROOT/scripts/Palmier_Pro_Developer_ID.provisionprofile}"
-ENTITLEMENTS="$ROOT/scripts/PalmierPro.entitlements"
-RESOURCES="$ROOT/Sources/PalmierPro/Resources"
-APP="$ROOT/.build/PalmierPro.app"
-ZIP="$ROOT/.build/PalmierPro.zip"
-DMG="$ROOT/.build/PalmierPro.dmg"
+SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-nueditor-notary}"
+PROVISION_PROFILE="${PROVISION_PROFILE:-$ROOT/scripts/NUEditor_Developer_ID.provisionprofile}"
+ENTITLEMENTS="$ROOT/scripts/NUEditor.entitlements"
+RESOURCES="$ROOT/Sources/NUEditor/Resources"
+APP="$ROOT/.build/NUEditor.app"
+ZIP="$ROOT/.build/NUEditor.zip"
+DMG="$ROOT/.build/NUEditor.dmg"
 
 echo "==> Building ($CONFIG)"
 BUILD_ARGS=(-c "$CONFIG" --traits BundledSpeech)
 swift build "${BUILD_ARGS[@]}"
-BIN="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)/PalmierPro"
+BIN="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)/NUEditor"
 
 echo "==> Assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
-cp "$BIN" "$APP/Contents/MacOS/PalmierPro"
+cp "$BIN" "$APP/Contents/MacOS/NUEditor"
 cp "$RESOURCES/Info.plist" "$APP/Contents/Info.plist"
 
 cp "$RESOURCES/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 # Flatten SwiftPM's resource bundle into the app's Resources tree.
-RES_BUNDLE="$(dirname "$BIN")/PalmierPro_PalmierPro.bundle"
+RES_BUNDLE="$(dirname "$BIN")/NUEditor_NUEditor.bundle"
 if [ -d "$RES_BUNDLE/Fonts" ]; then
   cp -R "$RES_BUNDLE/Fonts" "$APP/Contents/Resources/"
 else
@@ -66,15 +66,15 @@ fi
 
 # Ensure the shipped Claude Desktop connector is always up to date with mcpb/ sources.
 MCPB_SRC="$ROOT/mcpb"
-MCPB_CHECKED_IN="$ROOT/Sources/PalmierPro/Resources/MCPB/palmier-pro.mcpb"
-MCPB_FRESH="$(mktemp -d)/palmier-pro.mcpb"
+MCPB_CHECKED_IN="$ROOT/Sources/NUEditor/Resources/MCPB/nueditor.mcpb"
+MCPB_FRESH="$(mktemp -d)/nueditor.mcpb"
 (cd "$MCPB_SRC" && zip -q -X -r "$MCPB_FRESH" manifest.json icon.png server/index.js server/package.json)
 if ! unzip -p "$MCPB_CHECKED_IN" server/index.js 2>/dev/null | diff -q - <(unzip -p "$MCPB_FRESH" server/index.js) >/dev/null 2>&1 \
   || ! unzip -p "$MCPB_CHECKED_IN" manifest.json 2>/dev/null | diff -q - <(unzip -p "$MCPB_FRESH" manifest.json) >/dev/null 2>&1; then
-  echo "==> refreshing checked-in palmier-pro.mcpb from mcpb/ sources"
+  echo "==> refreshing checked-in nueditor.mcpb from mcpb/ sources"
   cp "$MCPB_FRESH" "$MCPB_CHECKED_IN"
 fi
-cp "$MCPB_FRESH" "$APP/Contents/Resources/palmier-pro.mcpb"
+cp "$MCPB_FRESH" "$APP/Contents/Resources/nueditor.mcpb"
 rm -rf "$(dirname "$MCPB_FRESH")"
 if [ -d "$RES_BUNDLE/Images" ]; then
   cp -R "$RES_BUNDLE/Images" "$APP/Contents/Resources/"
@@ -120,7 +120,7 @@ fi
 mkdir -p "$APP/Contents/Resources/mlx-swift_Cmlx.bundle"
 cp "$MLX_METALLIB" "$APP/Contents/Resources/mlx-swift_Cmlx.bundle/default.metallib"
 
-install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PalmierPro"
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/NUEditor"
 touch "$APP"
 
 if [ "$MODE" = "fast" ]; then
@@ -131,10 +131,10 @@ if [ "$MODE" = "fast" ]; then
   exit 0
 fi
 
-DSYM="$ROOT/.build/PalmierPro.dSYM"
+DSYM="$ROOT/.build/NUEditor.dSYM"
 echo "==> Generating dSYM"
 rm -rf "$DSYM"
-dsymutil "$APP/Contents/MacOS/PalmierPro" -o "$DSYM"
+dsymutil "$APP/Contents/MacOS/NUEditor" -o "$DSYM"
 
 if [ "$MODE" = "dev" ]; then
   echo "==> Ad-hoc signing dev app"
@@ -179,11 +179,11 @@ rm -f "$ZIP"
 echo "==> Building DMG"
 rm -f "$DMG"
 STAGING="$(mktemp -d)"
-cp -R "$APP" "$STAGING/PalmierPro.app"
+cp -R "$APP" "$STAGING/NUEditor.app"
 ln -s /Applications "$STAGING/Applications"
 cp "$RESOURCES/AppIcon.icns" "$STAGING/.VolumeIcon.icns"
 hdiutil create \
-  -volname "PalmierPro" \
+  -volname "NUEditor" \
   -srcfolder "$STAGING" \
   -ov -format UDZO \
   "$DMG"

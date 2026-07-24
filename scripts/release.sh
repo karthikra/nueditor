@@ -28,8 +28,8 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PLIST="$ROOT/Sources/PalmierPro/Resources/Info.plist"
-DMG="$ROOT/.build/PalmierPro.dmg"
+PLIST="$ROOT/Sources/NUEditor/Resources/Info.plist"
+DMG="$ROOT/.build/NUEditor.dmg"
 cd "$ROOT"
 
 echo "==> Preflight"
@@ -63,7 +63,7 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
 fi
 
 echo "==> Generating release notes from commit log"
-NOTES_CLEAN="$(mktemp -t palmier-release.XXXXXX).md"
+NOTES_CLEAN="$(mktemp -t nueditor-release.XXXXXX).md"
 trap 'rm -f "$NOTES_CLEAN"' EXIT
 LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo '')"
 {
@@ -103,4 +103,4 @@ gh release create "$TAG" "$DMG" --title "$TAG" --notes-file "$NOTES_CLEAN"
 
 echo ""
 echo "==> Released $TAG"
-echo "    https://github.com/palmier-io/palmier-pro/releases/tag/$TAG"
+echo "    https://github.com/karthikra/nueditor/releases/tag/$TAG"

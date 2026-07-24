@@ -3,10 +3,10 @@
 import PackageDescription
 
 let package = Package(
-    name: "PalmierPro",
+    name: "NUEditor",
     platforms: [.macOS(.v26)],
     products: [
-        .executable(name: "PalmierPro", targets: ["PalmierPro"]),
+        .executable(name: "NUEditor", targets: ["NUEditor"]),
     ],
     traits: [
         .trait(name: "BundledSpeech", description: "Include on-device speech models and MLX."),
@@ -20,7 +20,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "PalmierPro",
+            name: "NUEditor",
             dependencies: [
                 .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "Tokenizers", package: "swift-transformers"),
@@ -41,7 +41,7 @@ let package = Package(
                     condition: .when(traits: ["BundledSpeech"])
                 ),
             ],
-            path: "Sources/PalmierPro",
+            path: "Sources/NUEditor",
             exclude: [
                 "Resources/Info.plist",
                 "Resources/AppIcon.icon",
@@ -50,7 +50,7 @@ let package = Package(
             ],
             resources: [
                 .copy("Resources/Fonts"),
-                .copy("Resources/MCPB/palmier-pro.mcpb"),
+                .copy("Resources/MCPB/nueditor.mcpb"),
                 .copy("Resources/Images"),
                 .copy("Resources/Changelog"),
                 .copy("Resources/Localization"),
@@ -63,12 +63,12 @@ let package = Package(
         ),
         .plugin(name: "MetalCIKernelPlugin", capability: .buildTool()),
         .testTarget(
-            name: "PalmierProTests",
+            name: "NUEditorTests",
             dependencies: [
-                "PalmierPro",
+                "NUEditor",
                 .product(name: "MCP", package: "swift-sdk"),
             ],
-            path: "Tests/PalmierProTests"
+            path: "Tests/NUEditorTests"
         ),
     ]
 )
