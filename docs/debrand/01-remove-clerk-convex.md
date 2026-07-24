@@ -83,5 +83,5 @@ Then a follow-up `refactor(debrand): remove dead account/credits UI` if you spli
 ## Next debrand tasks (later docs in this dir)
 
 - `02` — remove Sentry/PostHog (telemetry) + Sparkle (auto-update).
-- `03` — rename PalmierPro → NUEDIT (bundle id/subsystem `io.palmier.pro`, app name, icons,
+- `03` — rename PalmierPro → **NUEditor** (bundle id/subsystem `io.palmier.pro`, app name, icons,
   Info.plist, localization, changelog, `mcpb/` server name `palmier-pro`).

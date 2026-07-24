@@ -1,19 +1,21 @@
 @AGENTS.md
 
-# NUEDIT Editor — project context
+# NUEditor — project context
 
-This repo is a fork of **Palmier Pro** (`palmier-io/palmier-pro`, GPLv3) being taken over
-entirely and rebuilt as the **NUEDIT** AI-native video editor. `@AGENTS.md` above governs Swift
+This repo (`karthikra/nueditor`) is a fork of **Palmier Pro** (`palmier-io/palmier-pro`, GPLv3)
+being taken over entirely and rebuilt as **NUEditor**, the AI-native video editor. Naming:
+**NUEditor** = this editor (Swift/Mac); **NUEDIT** = the backend brain (Python/tower, repo
+`karthikra/nuedit`). `@AGENTS.md` above governs Swift
 engineering style; this file governs *what we are building and why*. When they conflict on
 process, this file wins; on Swift style, AGENTS.md wins.
 
 ## The product in one line
 
-NUEDIT is a two-part system:
-- **This editor** (Swift 6.2 / SwiftUI + AppKit / AVFoundation / Metal, macOS 26, arm64) — the
-  front-end and hands: timeline engine, compositing, rendering, transcript/caption editing,
+The product ships in two parts:
+- **NUEditor** — this repo (Swift 6.2 / SwiftUI + AppKit / AVFoundation / Metal, macOS 26, arm64)
+  — the front-end and hands: timeline engine, compositing, rendering, transcript/caption editing,
   export, and the **MCP server** (`127.0.0.1:19789/mcp`).
-- **The NUEDIT backend** (Python / FastAPI on a Linux GPU tower — repo `karthikra/nuedit`) — the
+- **NUEDIT** — the backend (Python / FastAPI on a Linux GPU tower — repo `karthikra/nuedit`) — the
   brain: ingest, VLM captioning, transcript, semantic search, A-roll/B-roll classification
   (incl. measured active-speaker detection / Light-ASD), script→section matching, B-roll
   association, and generation.

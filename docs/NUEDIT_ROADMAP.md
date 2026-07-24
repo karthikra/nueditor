@@ -1,7 +1,7 @@
-# NUEDIT Editor — roadmap
+# NUEditor — roadmap
 
-Fork of Palmier Pro → the **NUEDIT** AI-native editor. See `CLAUDE.md` for the full context.
-Each phase ships something runnable.
+Fork of Palmier Pro → **NUEditor**, the AI-native editor (the **NUEDIT** backend is the brain).
+See `CLAUDE.md` for the full context. Each phase ships something runnable.
 
 ## Phase 0 — Bootstrap (current)
 
@@ -18,7 +18,7 @@ Execution docs live in `docs/debrand/` (start with `01-remove-clerk-convex.md`).
 - Remove **Clerk + Convex** (auth + the closed generation broker) → editor runs local-only, no
   login. → **`docs/debrand/01-remove-clerk-convex.md`**
 - Remove **Sentry / PostHog** (telemetry) and **Sparkle** (auto-update).
-- Rename **PalmierPro → NUEDIT**: bundle id/subsystem, app name, `Resources/AppIcon.*`,
+- Rename **PalmierPro → NUEditor**: bundle id/subsystem, app name, `Resources/AppIcon.*`,
   `Info.plist`, localization, changelog, and the MCP server/bundle name (`mcpb/`).
 - Result: a clean, unbranded, self-owned editor with a live MCP server and no external calls.
 
