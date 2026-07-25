@@ -162,6 +162,31 @@ Notes:
 - **Place a ready asset with the editor's existing `import_media` + `add_clips`** — don't build a
   second import path. For gap fills, the brief's `section_id` says which gap it belongs to.
 
+## Archive originals to S3 (background, client-driven)
+
+The external drive is usually the **only** full-res copy. Archiving fixes that, and because the
+originals are here while the S3 credentials are on the tower, **the Mac uploads directly to S3** —
+the raw never passes through the tower.
+
+    GET  /api/v1/projects/{id}/archive/candidates   -> [{footage_id, filename, checksum,
+                                                        file_size_bytes, original_uri}]
+    POST /api/v1/footage/{footage_id}/archive/presign?expires_in=3600
+                                                    -> {url, key, expires_in, checksum}
+    PUT  <url>                                      (direct to S3, body = the original file)
+    POST /api/v1/footage/{footage_id}/archive/complete   body {"key": "<key>"} -> {archived, uri}
+    GET  /api/v1/projects/{id}/archive/status       -> {total, by_status, fully_archived}
+    POST /api/v1/projects/{id}/archive/settings     body {"enabled": false}   per-project opt-out
+
+Rules:
+- **Strictly background and interruptible.** Only run when the volume is mounted and the machine is
+  idle/on a good link; never block an edit, an import, or an export on it.
+- `original_uri` is `volume://<uuid>/<rel>` — resolve it against the mounted volume to find the file.
+- Archiving is **on by default**; respect the per-project opt-out and expose it in project settings.
+- `complete` verifies the object's size against what you reported at ingest, so a truncated upload
+  comes back `archived: false` — retry it; a failed item reappears in `candidates`.
+- Footage with no checksum is never offered (an unverifiable copy is not a backup).
+- Don't parallelise heavily: these are multi-GB objects on a drive you're also reading for playback.
+
 ## Other NUEDIT endpoints this consumes (tower `/api/v1`)
 
 `search`, `scripts/*` (sections, `match`, `select`), `timelines/{id}/assemble`,
