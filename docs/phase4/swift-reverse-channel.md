@@ -6,10 +6,9 @@
 >   `POST /api/v1/projects/{project_id}/footage/edge-register` (contract below). Build this first;
 >   it is the primary ingest path and unblocks everything else NUEDIT knows about your media.
 > - ✅ Also ready: `search`, `scripts/*`, `timelines/{id}/assemble`, `footage` list/status.
-> - ⏳ **STILL QUEUED — generation / analyze-gaps / gap-fill panels.** Those capabilities exist on
->   the tower (generation layer over fal·Modal·local; marker + LLM gap analysis) but are exposed
->   only as **MCP tools** on `:8009`, not as `/api/v1` routes. The tower session will add the REST
->   routes and update this doc. Don't build those panels against MCP from Swift.
+> - ✅ **READY — generation + gaps.** The `/api/v1` routes now exist (see "Generation & gaps"
+>   below): submit video/image/music/voice-over, poll jobs, analyze a timeline's coverage gaps,
+>   and fill them. Backed by the same service core as the MCP tools, so behaviour matches.
 > - Prereqs done: debrand ✅, NUEDIT MCP server ✅ (8 tools), media identity/locator ✅.
 
 ## Goal
@@ -136,12 +135,37 @@ Full design + data model: NUEDIT repo `docs/superpowers/specs/2026-07-25-media-m
   pipeline progress; the tower emits an `uploaded` event immediately, then transcript/chunks events.
 - The original is registered **offline** until a drive is mounted — expected, not an error.
 
-## NUEDIT endpoints this consumes (tower `/api/v1`)
+## Generation & gaps — endpoint contract
+
+Same auth as above (`Authorization: Bearer <jwt>`, tenant-scoped). Generation is slow, so every
+submit returns a **job** you poll; the client never blocks on it.
+
+| Method + path | Body / query | Returns |
+|---|---|---|
+| `POST /api/v1/projects/{project_id}/generation/{capability}` | `{"prompt": …, "duration_s"?, "aspect_ratio"?, "model"?, "voice"?, "ref_image_assets"?}` — `capability` ∈ `video`\|`image`\|`music`\|`voiceover` (for `voiceover`, `prompt` is the text to speak) | `202 {job_id, capability, status, backend, model, asset_uri, error}` |
+| `GET /api/v1/generation/jobs/{job_id}` | — | `200` same job shape; **when `status == "ready"`, `asset_uri` is importable** |
+| `GET /api/v1/projects/{project_id}/generation/jobs?limit=50` | — | `200 [job, …]` newest first (adds `prompt`, `section_id`) |
+| `POST /api/v1/timelines/{timeline_id}/analyze-gaps?use_llm=false` | — | `200 {timeline_id, count, briefs:[{capability, prompt, section_id, section_name, duration_s, aspect_ratio, reason, source}]}` |
+| `POST /api/v1/timelines/{timeline_id}/fill-gaps?use_llm=false` | optional `{"capabilities": ["video"]}` | `202 {gaps, submitted, jobs:[…]}` — one generation per gap |
+| `GET /api/v1/timelines/{timeline_id}/gap-jobs` | — | `200 {timeline_id, jobs:[{job_id, capability, status, section_id, asset_uri, error}]}` |
+
+Notes:
+- `status` ∈ `pending` \| `running` \| `ready` \| `failed`. Poll until terminal; don't assume timing.
+- `analyze-gaps` always runs the **marker stream** (MISSING / LOW_CONFIDENCE); `use_llm=true` adds
+  the Bedrock stream that proposes holistic gaps (establishing shots, transitions, music/VO).
+  `brief.source` tells you which produced it (`marker` \| `llm`).
+- Which backend runs a capability (tower GPU / Modal / fal) is **NUEDIT config, not a client
+  concern** — don't surface or select backends in the UI.
+- A capability whose backend isn't configured fails that gap only: `fill-gaps` reports it in
+  `jobs[].error` and still submits the rest. Show partial success.
+- `400` = unknown capability or bad body; `404` = job/timeline not yours (never `403`).
+- **Place a ready asset with the editor's existing `import_media` + `add_clips`** — don't build a
+  second import path. For gap fills, the brief's `section_id` says which gap it belongs to.
+
+## Other NUEDIT endpoints this consumes (tower `/api/v1`)
 
 `search`, `scripts/*` (sections, `match`, `select`), `timelines/{id}/assemble`,
-`footage/upload` + `footage/{id}/status` (drag-to-ingest), `footage` (list/status).
-**Not yet routed (MCP-only today, tower to add):** `analyze-gaps`, gap-fill, and
-`generation/{video|image|music|voiceover}` + job polling. Exact shapes finalized when those land.
+`footage` (list/status), and the edge-ingest endpoint contracted above.
 
 ## Constraints
 
