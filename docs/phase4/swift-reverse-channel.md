@@ -35,33 +35,44 @@ loopback). Auth: JWT / agent key issued by NUEDIT (`/api/v1/agent_keys`).
    - **B-roll review/override** — surface NUEDIT's A/B-roll calls for accept/override.
 4. **Drag-to-ingest** — register dragged footage with NUEDIT (see below).
 
-## Drag-to-ingest — make dragged footage "smart"
+## Edge ingest — NUEditor is the primary ingest point (supersedes "drag-to-ingest")
 
-**Why:** the two sides share no database. NUEditor's media library is a **JSON manifest inside the
-project package** referencing files in place (no DB, no SQLite); NUEDIT's knowledge lives in its
-**Postgres** (`footage_files` → `video_chunks` → captions/transcript/roll signals) with bytes in S3.
-So footage dragged straight into the editor is invisible to NUEDIT: **no VLM captions, no transcript,
-no A/B-roll classification, no semantic search, no script matching.** Only footage ingested by NUEDIT
-gets the intelligence.
+**The topology:** raw footage arrives **here, on the Mac, usually on an external drive** — never on
+the tower. Raw must not cross the network (nor be copied to the Mac's SSD: 926 GB but only ~35 GB
+free). And the two sides share no database — NUEditor's library is a **JSON manifest referencing files
+in place**; NUEDIT's knowledge lives in its **Postgres**. So footage dragged in is invisible to NUEDIT
+(no captions/transcript/A-B-roll/search/matching) until it's registered.
 
-**What to build:** on media import (drag-drop or file picker), optionally hand the file to NUEDIT so
-it becomes a first-class ingested asset while staying usable locally straight away.
+**Therefore the editor becomes the ingest point**, and *only proxies* travel:
 
-- **Opt-in + non-blocking.** A setting ("Send imported media to NUEDIT") and a per-import affordance.
-  The drag must complete and the clip be immediately editable — ingest happens in the background;
-  never block the UI on an upload.
-- **Call** `POST /api/v1/footage/upload` (or `/upload/batch`), then poll `GET /api/v1/footage/{id}/status`
-  until the pipeline finishes. Surface per-asset state in the media panel (queued → ingesting →
-  captioned/searchable, or failed) — a small badge, not a modal.
-- **Store the mapping.** Persist NUEDIT's `footage_id` on the `MediaManifestEntry` (the manifest is
-  the editor's source of truth) so the clip can later be searched, roll-reviewed, or matched, and so
-  re-imports don't double-ingest. Dedupe on that id (plus a content hash if cheap).
-- **Big files:** prefer sending a path/URL NUEDIT can pull, or a resumable/chunked upload, over one
-  giant POST; large masters are the norm. Respect NUEDIT's rate limits (`RATE_LIMIT_UPLOAD`).
-- **Offline / backend unreachable:** degrade silently to local-only import (the current behavior) and
-  let the user retry later — never lose the clip or fail the drop.
-- **Reverse direction already exists:** footage NUEDIT already owns arrives via `import_media`
-  (url/path) during a tower-side push — don't duplicate that path here.
+1. **Probe** the file (AVFoundation), **checksum** it (**SHA-256, whole file**), record **volume UUID +
+   path relative to the volume** (external drives remount at different paths).
+2. **Generate proxies locally** with the hardware encoders (M1 Max has H.264/HEVC + ProRes engines):
+   `preview_proxy` 720p (editing), `vlm_proxy` 480p/5 fps (analysis), **audio 16 kHz mono WAV**.
+   **Compute the SHA-256 in the same read pass** — the bytes are already streaming through, so
+   whole-file hashing is effectively free.
+3. **Register with NUEDIT** and upload **only `vlm_proxy` + audio** (~0.4–0.9 GB per TB of raw, a
+   ~1000× reduction). **Never upload the original.** The tower then runs its whole pipeline on proxies.
+4. **Originals stay on the external drive, referenced in place** — never copied, never moved.
+
+Design rules:
+- **Non-blocking.** The drop completes and the clip is immediately editable; probe/transcode/upload run
+  in the background with per-asset state in the media panel (queued → proxying → uploading →
+  analysed / failed) as a badge, not a modal.
+- **Offline is normal.** The external drive is usually unplugged. A clip whose original is offline stays
+  fully visible and **editable via its proxy**; only conform/export needs the volume, and should name
+  exactly which volumes to mount.
+- **Store identity on the manifest entry:** `footage_id` + `checksum` + which tier is in use, so relink
+  is by content (not path), re-imports dedupe, and the project opens on any machine.
+- **Proxy cache on the internal disk** (default) so editing survives an unplug; honour a disk budget
+  with LRU eviction + pin/unpin. Evicting must remove *bytes*, never clips.
+- **Backend unreachable:** degrade silently to local-only import and retry later — never lose the clip.
+- **Don't duplicate the pull path:** media NUEDIT already owns still arrives via `import_media`
+  (url/path) on a tower-side push.
+
+Full design + data model: NUEDIT repo `docs/superpowers/specs/2026-07-25-media-management-design.md`
+(rev 2). Tower builds identity/locator + the edge-ingest API first (steps 1–2); this editor work is
+step 3.
 
 ## NUEDIT endpoints this consumes (tower `/api/v1`)
 
