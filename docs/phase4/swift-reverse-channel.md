@@ -1,11 +1,16 @@
 # Phase 4 (Swift) — Reverse channel: NUEditor → NUEDIT
 
-> **STATUS: QUEUED — do NOT start yet.** Progress on the preconditions (2026-07-25):
-> (1) debrand queue — ✅ done; (2) generation layer + video gap analysis (backend Phase 3) — ✅ done
-> (video/image/music/voice-over over fal·Modal·local; marker + LLM gap streams); (3) NUEDIT MCP
-> server — ✅ done (8 tools on tower `:8009`). **Still missing: the REST endpoints** this client
-> consumes — generation/analyze-gaps/gap-fill exist today only as MCP tools + service code, not as
-> `/api/v1` routes. The tower session builds those, then flips this to **READY** and pings.
+> **STATUS (2026-07-25): partially READY — start with Edge ingest.**
+>
+> - ✅ **READY NOW — Edge ingest.** The tower endpoint exists, is tested, and is authenticated:
+>   `POST /api/v1/projects/{project_id}/footage/edge-register` (contract below). Build this first;
+>   it is the primary ingest path and unblocks everything else NUEDIT knows about your media.
+> - ✅ Also ready: `search`, `scripts/*`, `timelines/{id}/assemble`, `footage` list/status.
+> - ⏳ **STILL QUEUED — generation / analyze-gaps / gap-fill panels.** Those capabilities exist on
+>   the tower (generation layer over fal·Modal·local; marker + LLM gap analysis) but are exposed
+>   only as **MCP tools** on `:8009`, not as `/api/v1` routes. The tower session will add the REST
+>   routes and update this doc. Don't build those panels against MCP from Swift.
+> - Prereqs done: debrand ✅, NUEDIT MCP server ✅ (8 tools), media identity/locator ✅.
 
 ## Goal
 
@@ -71,8 +76,65 @@ Design rules:
   (url/path) on a tower-side push.
 
 Full design + data model: NUEDIT repo `docs/superpowers/specs/2026-07-25-media-management-design.md`
-(rev 2). Tower builds identity/locator + the edge-ingest API first (steps 1–2); this editor work is
-step 3.
+(rev 2). Tower steps 1–2 (identity/locator + edge-ingest API) are **done**; this editor work is step 3.
+
+### Endpoint contract — `POST /api/v1/projects/{project_id}/footage/edge-register`
+
+**Auth** (router-level, verified): `Authorization: Bearer <jwt>` — preferred for this client — or the
+`nuedit_session` cookie. Requests are tenant-scoped by `project_id`, so the token's org must own it.
+
+**Body:** `multipart/form-data`
+
+| Part | Kind | Required | Notes |
+|---|---|---|---|
+| `metadata` | form field, JSON string | ✅ | see below |
+| `vlm_proxy` | file | ✅¹ | 480p / 5 fps H.264 — what the VLM analyses |
+| `audio` | file | ✅¹ | **16 kHz mono WAV, whisper-ready** — stored as the *cleaned* audio and consumed by transcription **and ASD** |
+| `preview_proxy` | file | optional | 720p; only for the tower's web review UI — normally keep it local |
+| `thumbnail` | file | optional | jpg |
+
+¹ At least one of `vlm_proxy` / `audio` must be present (400 otherwise). **Never send the camera original.**
+
+`metadata` JSON (`EdgeIngestMeta`):
+
+```json
+{
+  "filename": "A001.mov",              // required
+  "duration_ms": 23530,                // required
+  "checksum": "<sha256 hex>",          // required, non-empty -> 400 if missing/blank
+  "checksum_algo": "sha256",           // default "sha256"
+  "codec": "hevc",                     // optional probe fields
+  "frame_rate": 25.0,
+  "resolution_width": 3840,
+  "resolution_height": 2160,
+  "file_size_bytes": 12000000000,      // size of the ORIGINAL (which is never uploaded)
+  "has_audio": true,
+  "volume_uuid": "AAAA-BBBB",          // the external drive's UUID, NOT its mount point
+  "volume_label": "SHOOT_A",
+  "volume_relative_path": "day1/A001.mov",   // path relative to the volume root
+  "mount_point": "/Volumes/SHOOT_A"    // advisory / last-seen only
+}
+```
+
+**Responses**
+
+| Code | Body | Meaning |
+|---|---|---|
+| `202` | `{"id","status":"accepted","filename","derivatives":["audio","vlm_proxy"]}` | registered; analysis runs in the background |
+| `202` | `{"id","status":"duplicate","filename"}` | this `(project, checksum)` already exists — **reuse that `id`**, nothing re-analysed. Note it is **202, not 409** |
+| `400` | `{"detail": …}` | unparseable `metadata`, blank `checksum`, or no derivative sent |
+| `401` | — | missing/invalid token |
+
+**Client rules**
+- **Send `volume_uuid` + `volume_relative_path`.** That's what lets the tower record the original as
+  `volume://<uuid>/<rel>` and resolve it wherever the drive remounts. Without them the original has no
+  recorded location (registration still succeeds).
+- **Persist the returned `id` (NUEDIT `footage_id`) + your `checksum` on the `MediaManifestEntry`** —
+  that's the join key for search/roll-review/matching later, and it makes re-imports idempotent.
+- Treat `duplicate` as success: adopt the returned `id`, skip re-uploading.
+- Poll `GET /api/v1/projects/{project_id}/footage/{id}/status` (or the `footage_webhooks` feed) for
+  pipeline progress; the tower emits an `uploaded` event immediately, then transcript/chunks events.
+- The original is registered **offline** until a drive is mounted — expected, not an error.
 
 ## NUEDIT endpoints this consumes (tower `/api/v1`)
 
