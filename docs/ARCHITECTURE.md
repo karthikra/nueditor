@@ -121,6 +121,20 @@ REST is the scalable backbone; MCP is the agent-facing adapter over the same ser
   analyze_gaps). To build (Phase 4).
 - **Media bytes** move over HTTP (`import_media` url mode) or a shared path — not MCP.
 
+### Storage model — the two sides share NO database
+
+- **NUEditor** has **no database** (no SQLite/CoreData/SwiftData). A project is a **package** with
+  **JSON** inside — `MediaManifest` (v2: entries + folders), timeline data, generation log — and media
+  is **referenced in place**, not copied. Derived caches are plain files under
+  `~/Library/Application Support/com.veeville.nueditor/` (`Embeddings/*.embed`, `Transcripts/`).
+- **NUEDIT** owns **PostgreSQL 16** (`pgvector/pgvector:pg16`, async SQLAlchemy + Alembic):
+  `footage_files` → `video_chunks` → `chunk_descriptions`/`transcripts`/roll signals, plus scripts,
+  timelines, `section_broll`, `roll_labels`, `gen_jobs`. Bytes in S3 (`nuedit-media`) + local proxies;
+  vectors in ChromaDB (pgvector available).
+- **Consequence:** footage dragged straight into NUEditor is invisible to NUEDIT — no captions,
+  transcript, A/B-roll classification, search, or script matching. Intelligence requires NUEDIT
+  ingest. Closing that gap is the **drag-to-ingest** item in `docs/phase4/swift-reverse-channel.md`.
+
 ## Boundaries / invariants
 
 - **NUEDIT → NUEditor coupling is MCP only.** NUEDIT never reaches into NUEditor's internals; it

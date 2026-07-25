@@ -1,10 +1,11 @@
 # Phase 4 (Swift) — Reverse channel: NUEditor → NUEDIT
 
-> **STATUS: QUEUED — do NOT start yet.** This depends on tower-side work that does not exist:
-> (1) the debrand queue (`docs/debrand/`) complete, (2) NUEDIT REST endpoints for editor-initiated
-> flows + the generation layer (backend Phase 3), (3) the NUEDIT MCP server (backend Phase 4).
-> The tower session will flip this to **READY** (and ping) when the backend is in place. Until then,
-> keep working the debrand.
+> **STATUS: QUEUED — do NOT start yet.** Progress on the preconditions (2026-07-25):
+> (1) debrand queue — ✅ done; (2) generation layer + video gap analysis (backend Phase 3) — ✅ done
+> (video/image/music/voice-over over fal·Modal·local; marker + LLM gap streams); (3) NUEDIT MCP
+> server — ✅ done (8 tools on tower `:8009`). **Still missing: the REST endpoints** this client
+> consumes — generation/analyze-gaps/gap-fill exist today only as MCP tools + service code, not as
+> `/api/v1` routes. The tower session builds those, then flips this to **READY** and pings.
 
 ## Goal
 
@@ -32,12 +33,42 @@ loopback). Auth: JWT / agent key issued by NUEDIT (`/api/v1/agent_keys`).
    - **Generation** — video / image / music / voice-over; show coverage gaps from `analyze_gaps`,
      trigger generation, poll the job, import the finished asset into the gap.
    - **B-roll review/override** — surface NUEDIT's A/B-roll calls for accept/override.
+4. **Drag-to-ingest** — register dragged footage with NUEDIT (see below).
+
+## Drag-to-ingest — make dragged footage "smart"
+
+**Why:** the two sides share no database. NUEditor's media library is a **JSON manifest inside the
+project package** referencing files in place (no DB, no SQLite); NUEDIT's knowledge lives in its
+**Postgres** (`footage_files` → `video_chunks` → captions/transcript/roll signals) with bytes in S3.
+So footage dragged straight into the editor is invisible to NUEDIT: **no VLM captions, no transcript,
+no A/B-roll classification, no semantic search, no script matching.** Only footage ingested by NUEDIT
+gets the intelligence.
+
+**What to build:** on media import (drag-drop or file picker), optionally hand the file to NUEDIT so
+it becomes a first-class ingested asset while staying usable locally straight away.
+
+- **Opt-in + non-blocking.** A setting ("Send imported media to NUEDIT") and a per-import affordance.
+  The drag must complete and the clip be immediately editable — ingest happens in the background;
+  never block the UI on an upload.
+- **Call** `POST /api/v1/footage/upload` (or `/upload/batch`), then poll `GET /api/v1/footage/{id}/status`
+  until the pipeline finishes. Surface per-asset state in the media panel (queued → ingesting →
+  captioned/searchable, or failed) — a small badge, not a modal.
+- **Store the mapping.** Persist NUEDIT's `footage_id` on the `MediaManifestEntry` (the manifest is
+  the editor's source of truth) so the clip can later be searched, roll-reviewed, or matched, and so
+  re-imports don't double-ingest. Dedupe on that id (plus a content hash if cheap).
+- **Big files:** prefer sending a path/URL NUEDIT can pull, or a resumable/chunked upload, over one
+  giant POST; large masters are the norm. Respect NUEDIT's rate limits (`RATE_LIMIT_UPLOAD`).
+- **Offline / backend unreachable:** degrade silently to local-only import (the current behavior) and
+  let the user retry later — never lose the clip or fail the drop.
+- **Reverse direction already exists:** footage NUEDIT already owns arrives via `import_media`
+  (url/path) during a tower-side push — don't duplicate that path here.
 
 ## NUEDIT endpoints this consumes (tower `/api/v1`)
 
 `search`, `scripts/*` (sections, `match`, `select`), `timelines/{id}/assemble`,
-`timelines/{id}/analyze-gaps`, `generation/{video|image|music|voiceover}` + `jobs/{id}`,
-`footage` (list/status). (Exact shapes finalized when backend Phase 3/4 lands.)
+`footage/upload` + `footage/{id}/status` (drag-to-ingest), `footage` (list/status).
+**Not yet routed (MCP-only today, tower to add):** `analyze-gaps`, gap-fill, and
+`generation/{video|image|music|voiceover}` + job polling. Exact shapes finalized when those land.
 
 ## Constraints
 
