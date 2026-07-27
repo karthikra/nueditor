@@ -91,18 +91,55 @@ footage → [NUEDIT tower] ingest → caption → transcript → search index
 1. **Debrand** (Mac) — ✅ **done**. Clerk/Convex/telemetry/Sparkle removed, renamed → NUEditor
    (`com.veeville.nueditor`), local-only. `docs/debrand/`. Two upstream ties remain: the siglip2
    model URL and the skills catalog repo.
-2. **Phase 2 — MCP integration** (Tower) — `app/services/palmier.py` (MCP client),
-   `app/core/palmier_map.py` (pure ms↔frame), push a real assembled timeline into NUEditor, read
-   back. Spec: NUEDIT repo `docs/superpowers/specs/2026-07-24-palmier-mcp-integration-design.md`.
-3. **Phase 3 — owned generation + gap-fill** (Tower) — generate on our stack → `import_media`;
-   fill script-coverage gaps from `MISSING` markers. Also: rehost/replace the siglip2 search model.
-4. **Phase 4 — native features** (Mac + Tower) — scriptmaker panel, local LLM (MLX + Bedrock),
-   video-generator UI, in-editor B-roll review/override.
+2. **Phase 2 — MCP integration** (Tower) — ✅ **steps 1–3 done** (backend `fb460cf`):
+   `core/nueditor_map.py` (pure ms↔frame), `infrastructure/external/nueditor_client.py` (MCP
+   client), `core/nueditor_push.py` (push V1/V2), `scripts/nueditor_push.py`. Step 4 = live push
+   once NUEditor runs. Spec: NUEDIT repo `docs/superpowers/specs/2026-07-24-nueditor-mcp-integration-design.md`.
+3. **Phase 3 — generation layer + gap analysis** (Tower) — a **backend-flexible** generation layer
+   (tower · Modal · fal, per-capability) for **video · image · music · voice-over**, plus **video
+   gap analysis** (`MISSING`/`LOW_CONFIDENCE` → generation briefs) → generate → `import_media` →
+   fill the gap. Spec: NUEDIT repo `docs/superpowers/specs/2026-07-24-generation-layer-design.md`.
+   Also: rehost/replace the siglip2 search model.
+4. **Phase 4 — reverse channel + native features** (Mac + Tower) — **NUEDIT MCP server** (agents
+   drive NUEDIT's services); **Swift REST client** to NUEDIT `/api/v1` (editor → backend);
+   scriptmaker panel, generation UI, local LLM (MLX + Bedrock), in-editor B-roll review. Swift task:
+   `docs/phase4/swift-reverse-channel.md`.
+
+## Connection model (two directions, two protocols)
+
+REST is the scalable backbone; MCP is the agent-facing adapter over the same service core.
+
+- **NUEDIT → NUEditor (drive the editor):** NUEDIT is an MCP *client* of NUEditor's MCP server
+  (`:19789`, loopback → SSH-forwarded from the tower). One-way control (create timeline, import,
+  add_clips). Built (Phase 2).
+- **NUEditor → NUEDIT (editor uses backend intelligence/generation):** the Mac calls NUEDIT's
+  **REST `/api/v1`** (JWT, tenant-scoped) directly over Tailscale — *no tunnel* (FastAPI binds
+  `0.0.0.0:8000`). Async work returns `{jobId}` + webhook/poll. Scales (stateless, LB-able). To build
+  (Phase 4).
+- **Agents (Claude/Cursor) get both:** connect to NUEditor's MCP (edit) **and** a **NUEDIT MCP
+  server** (a thin facade over the REST service core — search/match/assemble/classify/generate/
+  analyze_gaps). To build (Phase 4).
+- **Media bytes** move over HTTP (`import_media` url mode) or a shared path — not MCP.
+
+### Storage model — the two sides share NO database
+
+- **NUEditor** has **no database** (no SQLite/CoreData/SwiftData). A project is a **package** with
+  **JSON** inside — `MediaManifest` (v2: entries + folders), timeline data, generation log — and media
+  is **referenced in place**, not copied. Derived caches are plain files under
+  `~/Library/Application Support/com.veeville.nueditor/` (`Embeddings/*.embed`, `Transcripts/`).
+- **NUEDIT** owns **PostgreSQL 16** (`pgvector/pgvector:pg16`, async SQLAlchemy + Alembic):
+  `footage_files` → `video_chunks` → `chunk_descriptions`/`transcripts`/roll signals, plus scripts,
+  timelines, `section_broll`, `roll_labels`, `gen_jobs`. Bytes in S3 (`nuedit-media`) + local proxies;
+  vectors in ChromaDB (pgvector available).
+- **Consequence:** footage dragged straight into NUEditor is invisible to NUEDIT — no captions,
+  transcript, A/B-roll classification, search, or script matching. Intelligence requires NUEDIT
+  ingest. Closing that gap is the **drag-to-ingest** item in `docs/phase4/swift-reverse-channel.md`.
 
 ## Boundaries / invariants
 
-- **MCP is the only coupling.** NUEDIT never reaches into NUEditor's internals; it calls MCP tools.
-  MCP port `19789` is fixed. Debrand must not touch the MCP server or `Agent/Tools/*`.
+- **NUEDIT → NUEditor coupling is MCP only.** NUEDIT never reaches into NUEditor's internals; it
+  calls MCP tools. Port `19789` is fixed; the MCP server / `Agent/Tools/*` are off-limits to debrand.
+- **NUEditor → NUEDIT coupling is REST (app) / MCP-facade (agents).** Never the reverse of the above.
 - **NUEDIT owns intelligence + generation; NUEditor owns editing + render + export.** Build each
   capability in exactly one place.
 - **Units:** NUEDIT ms ↔ NUEditor project frames (`round(ms/1000*fps)`).
