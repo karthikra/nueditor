@@ -3,8 +3,7 @@ import Foundation
 enum SearchIndexConfig {
     static let enabledDefaultsKey = "searchIndexEnabled"
     static let visualMatchCosineFloor: Float = 0.05
-    // TODO: last upstream dependency — rehost this CoreML package under our own org.
-    static let hostedURL = URL(string: "https://huggingface.co/palmier-io/siglip2-base-coreml/resolve/main")!
+    static let hostedURL = URL(string: "https://huggingface.co/karthikramesh/siglip2-base-coreml/resolve/main")!
 
     static var enabled: Bool {
         get { UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true }
