@@ -53,9 +53,28 @@ and the MCP server/bundle name `palmier-pro` (`mcpb/`).
 ## Integration seam
 
 NUEDIT is an MCP *client* of this editor's server. Design doc lives in the backend repo:
-`docs/superpowers/specs/2026-07-24-palmier-mcp-integration-design.md`. Core mapping: NUEDIT
+`nuedit: docs/superpowers/specs/2026-07-24-nueditor-mcp-integration-design.md`. Core mapping: NUEDIT
 timeline is in **milliseconds**, the editor in **project frames** (`round(ms/1000*fps)`);
 V1 A-roll → `trackIndex 0`, V2 B-roll → `trackIndex 1`; footage → `import_media` → `mediaRef`.
+
+## Sibling repo: nuedit (the tower backend) — how we stay in sync
+
+`nuedit` (`karthikra/nuedit`) is developed by its own Claude Code session on the tower. The two
+repos coordinate **through git** — there is no live agent channel. Full protocol + open threads:
+`docs/handoffs/README.md`. The essentials:
+
+- **Both repos live on this Mac:** `~/Developer/nueditor` (here) and `~/Developer/nuedit`.
+- **Pull the sibling and read its latest before building against it.** Every desync has been a
+  stale clone or an assumption the other side already answered: `git -C ~/Developer/nuedit pull --ff-only`.
+- **Boundary:** you own this repo; the tower owns `nuedit`. **Read `nuedit` for context, never edit
+  it** (its standing rule: *do not change anything under a nuedit Python path*). Cross-repo needs are
+  raised as a handoff, not made across the fence.
+- **Channel:** tower→editor requests land in `nuedit: docs/superpowers/handoffs/`; editor→tower
+  replies are dated docs in `nueditor: docs/phase4/` (`*-findings.md` / `*-followup.md`), which the
+  tower reads by pulling this repo.
+- **Verify, don't assert; say "unknown" over a guess** — the other side writes code against your
+  answers. A contract change (tool schema, ms↔frame map, field mapping) is itself the sync event.
+- To let one agent see both sides, add the sibling as a read reference: `/add-dir ~/Developer/nuedit`.
 
 ## Build / run (details in AGENTS.md)
 
