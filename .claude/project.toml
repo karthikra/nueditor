@@ -1,0 +1,5 @@
+[project]
+slug      = "nu"
+name      = "NUEditor"
+component = "editor"     # nuhub role: this repo's agent is addressed as nu/editor
+parent    = "nu"

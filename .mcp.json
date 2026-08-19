@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "nuhub": {
+      "type": "http",
+      "url": "http://100.96.118.41:8000/mcp",
+      "headersHelper": "/Users/karthikramesh/.nuhandoff/auth-header.sh"
+    }
+  }
+}
