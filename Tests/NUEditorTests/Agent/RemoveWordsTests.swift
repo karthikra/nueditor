@@ -35,6 +35,30 @@ struct WordCutPlannerTests {
         #expect(WordCutPlanner.cutRanges(words: ws, clipStart: 0, clipEnd: 100, keepGapFrames: 6)
             == [FrameRange(start: 9, end: 20)])
     }
+
+    // A removed word whose audio really ends at 25 (the timestamp said 20). VAD walk must
+    // extend the cut to 25 so no fragment of the word remains — regression for "still hear it".
+    @Test func vadWalkCoversMistimedTail() {
+        let ws = [
+            Word(startFrame: 0, endFrame: 10, selected: false),
+            Word(startFrame: 11, endFrame: 20, selected: true),
+            Word(startFrame: 31, endFrame: 40, selected: false),
+        ]
+        let speech: (Int) -> Bool = { (0..<10).contains($0) || (11..<25).contains($0) || (31..<40).contains($0) }
+        #expect(WordCutPlanner.cutRanges(words: ws, clipStart: 0, clipEnd: 100, keepGapFrames: 6, isSilent: { !speech($0) })
+            == [FrameRange(start: 11, end: 25)])
+    }
+
+    // The removed word runs straight into the next kept word with no silence between. The walk
+    // must stop at the neighbour (frame 31), never crossing into it — regression for over-cut.
+    @Test func vadWalkStopsAtKeptNeighbour() {
+        let ws = [
+            Word(startFrame: 11, endFrame: 20, selected: true),
+            Word(startFrame: 31, endFrame: 40, selected: false),
+        ]
+        #expect(WordCutPlanner.cutRanges(words: ws, clipStart: 0, clipEnd: 100, keepGapFrames: 6, isSilent: { $0 < 11 || $0 >= 40 })
+            == [FrameRange(start: 11, end: 31)])
+    }
 }
 
 @Suite("remove_words — param validation")
