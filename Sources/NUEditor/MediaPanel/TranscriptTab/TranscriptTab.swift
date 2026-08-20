@@ -18,6 +18,7 @@ struct TranscriptTab: View {
     @State private var selection: Set<Int> = []
     @State private var anchor: Int?
     @State private var note: String?
+    @State private var reloadWork: Task<Void, Never>?
 
     private enum Phase: Equatable { case idle, loading, loaded, empty, failed(String) }
 
@@ -32,9 +33,21 @@ struct TranscriptTab: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task(id: reloadTick) { await load() }
+        // Any timeline mutation — our own cut, undo/redo, an agent edit — shifts the
+        // word→frame mapping, so re-read. Debounced so a drag doesn't thrash.
+        .onChange(of: editor.timeline) { _, _ in scheduleReload() }
         .onKeyPress(.delete) { deleteSelection() ? .handled : .ignored }
         .onKeyPress(.deleteForward) { deleteSelection() ? .handled : .ignored }
         .onKeyPress(.escape) { clearSelection() ? .handled : .ignored }
+    }
+
+    private func scheduleReload() {
+        reloadWork?.cancel()
+        reloadWork = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            reloadTick &+= 1
+        }
     }
 
     // MARK: - Header
