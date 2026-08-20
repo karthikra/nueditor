@@ -53,7 +53,12 @@ into the editor. Full design: NUEDIT repo `docs/superpowers/specs/2026-07-24-gen
 - **Scriptmaker** panel (drives NUEDIT script/section/matching).
 - **Generation UI:** trigger video/image/music/VO + the gap-fill flow from the editor.
 - **Local LLM:** on-device MLX agent for offline/fast tasks; Bedrock for heavy reasoning.
-- Transcript-driven editing and in-editor B-roll review/override.
+- **Text-based editing:** edit spoken-word audio/video by editing its transcript — select words,
+  press Delete, the media is cut and the gap closed (A/V kept in sync). Fully on-device
+  (SpeechAnalyzer + Silero VAD). The cut engine already exists (`WordCutPlanner`, `remove_words`,
+  ripple-delete with A/V sync); this adds the transcript-editor UI + VAD-snapped cuts + video
+  jump-cut handling. Plan: `docs/plans/2026-08-20-text-based-editing.md`.
+- In-editor B-roll review/override.
 
 ## Feature ownership (build once)
 
