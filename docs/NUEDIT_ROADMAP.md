@@ -50,6 +50,11 @@ into the editor. Full design: NUEDIT repo `docs/superpowers/specs/2026-07-24-gen
   (edit) and NUEDIT's MCP (intelligence/generation).
 - **Reverse channel (Mac → tower, REST):** a Swift REST client to NUEDIT `/api/v1` (JWT) — the
   scalable path for editor-initiated features. Spec: `docs/phase4/swift-reverse-channel.md`.
+- **Edge ingest:** NUEditor is the ingest point for raw footage — probe + checksum + local proxies,
+  edit off the proxy, upload **only proxies** to the tower (raw never crosses the network), originals
+  referenced in place, content-addressed relink, offline-tolerant, background. This is what feeds the
+  whole tower-intelligence stack (caption/transcript/search/A-B-roll). Tower endpoint built + tested;
+  editor side is step 3. Plan: `docs/plans/2026-08-20-edge-ingest.md`.
 - **Scriptmaker** panel (drives NUEDIT script/section/matching).
 - **Generation UI:** trigger video/image/music/VO + the gap-fill flow from the editor.
 - **Local LLM:** on-device MLX agent for offline/fast tasks; Bedrock for heavy reasoning.
