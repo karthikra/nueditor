@@ -1,27 +1,40 @@
+import AppKit
 import SwiftUI
 
-/// Read-only transcript of the timeline's speech, rendered as prose. Click a word to
-/// seek there; the current word highlights during playback. Words carry project-frame
-/// positions from the same path `remove_words` uses (see `loadTimelineTranscript`).
+/// Text-based editing: the timeline's speech as prose. Click a word to seek; click to
+/// select and shift-click to extend a range, then Delete to cut the audio (and linked
+/// video) for those words and close the gap. The current word highlights during playback.
+///
+/// Words and the cut both come from the same on-device path `remove_words` uses
+/// (`loadTimelineTranscript` → `cutSelectedWords`), so the UI and the agent share one
+/// word→frame mapping and one cut engine.
 struct TranscriptTab: View {
     @Environment(EditorViewModel.self) private var editor
 
-    @State private var words: [TimelineWord] = []
+    @State private var transcript: TimelineTranscript?
     @State private var phase: Phase = .idle
     @State private var reloadTick = 0
 
-    private enum Phase: Equatable {
-        case idle, loading, loaded, empty, failed(String)
-    }
+    @State private var selection: Set<Int> = []
+    @State private var anchor: Int?
+    @State private var note: String?
+
+    private enum Phase: Equatable { case idle, loading, loaded, empty, failed(String) }
+
+    private var words: [TimelineWord] { transcript?.words ?? [] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider().overlay(AppTheme.Border.subtleColor)
             content
+            if !selection.isEmpty { selectionBar }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task(id: reloadTick) { await load() }
+        .onKeyPress(.delete) { deleteSelection() ? .handled : .ignored }
+        .onKeyPress(.deleteForward) { deleteSelection() ? .handled : .ignored }
+        .onKeyPress(.escape) { clearSelection() ? .handled : .ignored }
     }
 
     // MARK: - Header
@@ -32,9 +45,7 @@ struct TranscriptTab: View {
                 .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
             Spacer(minLength: 0)
-            Button {
-                reloadTick += 1
-            } label: {
+            Button { reloadTick += 1 } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -89,9 +100,11 @@ struct TranscriptTab: View {
             ScrollView {
                 FlowLayout(spacing: AppTheme.Spacing.xs, lineSpacing: AppTheme.Spacing.xs) {
                     ForEach(words.indices, id: \.self) { i in
-                        WordChip(text: words[i].text, isCurrent: i == currentIndex) {
-                            editor.seekToFrame(words[i].startFrame, mode: .exact)
-                        }
+                        WordChip(
+                            text: words[i].text,
+                            isSelected: selection.contains(i),
+                            isCurrent: i == currentIndex
+                        ) { handleTap(i) }
                         .id(i)
                     }
                 }
@@ -106,14 +119,91 @@ struct TranscriptTab: View {
         }
     }
 
+    // MARK: - Selection bar
+
+    private var selectionBar: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Text(selection.count == 1 ? "1 word" : "\(selection.count) words")
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+            if let note {
+                Text(note)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Status.warningColor)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Button("Clear") { _ = clearSelection() }
+                .buttonStyle(.plain)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            Button { _ = deleteSelection() } label: {
+                Label("Delete", systemImage: "scissors")
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+            }
+            .buttonStyle(.editorPrimary)
+            .help("Cut the selected words from the audio (and linked video)")
+        }
+        .padding(.horizontal, AppTheme.Spacing.lg)
+        .padding(.vertical, AppTheme.Spacing.md)
+        .background(AppTheme.Background.raisedColor)
+        .overlay(alignment: .top) {
+            Rectangle().fill(AppTheme.Border.primaryColor).frame(height: AppTheme.BorderWidth.hairline)
+        }
+    }
+
+    // MARK: - Interaction
+
+    private func handleTap(_ i: Int) {
+        note = nil
+        if NSEvent.modifierFlags.contains(.shift), let a = anchor {
+            selection = Set(min(a, i)...max(a, i))
+        } else {
+            selection = [i]
+            anchor = i
+        }
+        editor.seekToFrame(words[i].startFrame, mode: .exact)
+    }
+
+    @discardableResult
+    private func clearSelection() -> Bool {
+        guard !selection.isEmpty else { return false }
+        selection = []
+        anchor = nil
+        note = nil
+        return true
+    }
+
+    /// Returns true if it consumed a delete (there was a selection to act on).
+    @discardableResult
+    private func deleteSelection() -> Bool {
+        guard let transcript, !selection.isEmpty else { return false }
+        switch editor.cutSelectedWords(in: transcript, selected: selection, aggressiveness: .balanced, undoName: "Delete Words") {
+        case .ok:
+            selection = []
+            anchor = nil
+            note = nil
+            reloadTick += 1   // frames shifted — re-read the transcript
+        case .empty:
+            note = "Nothing removable in the selection."
+        case .multiTrack(let tracks):
+            note = "Selection spans unlinked tracks (\(tracks))."
+        case .refused(let reason):
+            note = reason
+        }
+        return true
+    }
+
     // MARK: - Loading
 
     private func load() async {
         phase = .loading
+        selection = []
+        anchor = nil
         do {
-            let transcript = try await editor.loadTimelineTranscript()
-            words = transcript.words
-            phase = words.isEmpty ? .empty : .loaded
+            let t = try await editor.loadTimelineTranscript()
+            transcript = t
+            phase = t.words.isEmpty ? .empty : .loaded
         } catch {
             phase = .failed(Log.detail(error))
         }
@@ -137,6 +227,7 @@ struct TranscriptTab: View {
 
 private struct WordChip: View {
     let text: String
+    let isSelected: Bool
     let isCurrent: Bool
     let onTap: () -> Void
 
@@ -145,7 +236,7 @@ private struct WordChip: View {
     var body: some View {
         Text(text)
             .font(.system(size: AppTheme.FontSize.smMd))
-            .foregroundStyle(isCurrent ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
+            .foregroundStyle(foreground)
             .padding(.horizontal, AppTheme.Spacing.xxs)
             .padding(.vertical, AppTheme.Spacing.xxs)
             .background(
@@ -157,7 +248,12 @@ private struct WordChip: View {
             .onHover { hovering = $0 }
     }
 
+    private var foreground: Color {
+        isSelected || isCurrent ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor
+    }
+
     private var background: Color {
+        if isSelected { return AppTheme.Accent.primary.opacity(AppTheme.Opacity.strong) }
         if isCurrent { return AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium) }
         if hovering { return AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.faint) }
         return .clear
