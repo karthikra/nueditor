@@ -777,6 +777,10 @@ enum CompositionBuilder {
     }
 
     /// Linear-ramp volume envelope; a nest `carrier` multiplies its envelope in.
+    /// Ramp length at each audio clip edge to prevent splice clicks. ~5 ms — enough to remove the
+    /// discontinuity, short enough to be inaudible on a continuous join.
+    private static let declickSeconds = 0.005
+
     private static func emitVolumeEnvelope(
         params: AVMutableAudioMixInputParameters,
         clip: Clip,
@@ -797,11 +801,19 @@ enum CompositionBuilder {
             let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
             let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
             guard volume.isFinite, end > start else { return }
-            params.setVolumeRamp(
-                fromStartVolume: volume,
-                toEndVolume: volume,
-                timeRange: CMTimeRange(start: start, end: end)
-            )
+            // Sample-accurate de-click: ramp the first/last few ms of every audio clip edge so a
+            // splice (a word cut, any edit) never clicks. Below the frame grid, so it works where a
+            // frame-quantized fade can't. Three contiguous ramps when the clip is long enough.
+            let d = CMTime(seconds: declickSeconds, preferredTimescale: 48_000)
+            let inEnd = CMTimeMinimum(end, CMTimeAdd(start, d))
+            let outStart = CMTimeMaximum(start, CMTimeSubtract(end, d))
+            if CMTimeCompare(inEnd, outStart) < 0 {
+                params.setVolumeRamp(fromStartVolume: 0, toEndVolume: volume, timeRange: CMTimeRange(start: start, end: inEnd))
+                params.setVolumeRamp(fromStartVolume: volume, toEndVolume: volume, timeRange: CMTimeRange(start: inEnd, end: outStart))
+                params.setVolumeRamp(fromStartVolume: volume, toEndVolume: 0, timeRange: CMTimeRange(start: outStart, end: end))
+            } else {
+                params.setVolumeRamp(fromStartVolume: volume, toEndVolume: volume, timeRange: CMTimeRange(start: start, end: end))
+            }
             return
         }
 

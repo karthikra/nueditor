@@ -325,25 +325,33 @@ struct CompositionBuildAudioTrackTests {
         )
 
         let params = try #require(result.audioMix.inputParameters.first)
-        let mutedRamp = try #require(volumeRamp(params, atFrame: muted.startFrame, fps: timeline.fps))
+        // Sample the middle of each clip (past the ~5ms edge de-click ramps): the muted clip stays
+        // silent, and the unity clip resets to full volume rather than inheriting the mute.
+        let mutedRamp = try #require(volumeRamp(params, atFrame: muted.startFrame + 12, fps: timeline.fps))
         #expect(mutedRamp.start == 0)
         #expect(mutedRamp.end == 0)
-        #expect(
-            mutedRamp.range == CMTimeRange(
-                start: CMTime(value: CMTimeValue(muted.startFrame), timescale: CMTimeScale(timeline.fps)),
-                end: CMTime(value: CMTimeValue(muted.endFrame), timescale: CMTimeScale(timeline.fps))
-            )
-        )
 
-        let nextRamp = try #require(volumeRamp(params, atFrame: next.startFrame, fps: timeline.fps))
+        let nextRamp = try #require(volumeRamp(params, atFrame: next.startFrame + 12, fps: timeline.fps))
         #expect(nextRamp.start == 1)
         #expect(nextRamp.end == 1)
-        #expect(
-            nextRamp.range == CMTimeRange(
-                start: CMTime(value: CMTimeValue(next.startFrame), timescale: CMTimeScale(timeline.fps)),
-                end: CMTime(value: CMTimeValue(next.endFrame), timescale: CMTimeScale(timeline.fps))
-            )
+    }
+
+    @Test func audioClipEdgesAreDeclicked() async throws {
+        let audioURL = try makeSilentWav(durationSeconds: 3)
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+        let clip = Fixtures.clip(id: "a1", mediaRef: "audio", mediaType: .audio, start: 0, duration: 48)
+        let timeline = Fixtures.timeline(fps: 24, tracks: [Fixtures.audioTrack(clips: [clip])])
+        let result = try await CompositionBuilder.build(
+            timeline: timeline, resolveURL: { _ in audioURL }, renderSize: CGSize(width: 320, height: 180)
         )
+        let params = try #require(result.audioMix.inputParameters.first)
+        // A short fade-in ramps 0 -> full at the very start (the de-click), then holds full.
+        let head = try #require(volumeRamp(params, atFrame: 0, fps: timeline.fps))
+        #expect(head.start == 0)
+        #expect(head.end == 1)
+        let body = try #require(volumeRamp(params, atFrame: 24, fps: timeline.fps))
+        #expect(body.start == 1)
+        #expect(body.end == 1)
     }
 
     @Test func mixedSpeedAudioClipsShareOneCompositionTrack() async throws {
