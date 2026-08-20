@@ -19,6 +19,7 @@ struct TranscriptTab: View {
     @State private var anchor: Int?
     @State private var note: String?
     @State private var reloadWork: Task<Void, Never>?
+    @State private var aggressiveness: CutAggressiveness = .balanced
 
     private enum Phase: Equatable { case idle, loading, loaded, empty, failed(String) }
 
@@ -146,6 +147,19 @@ struct TranscriptTab: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            Menu {
+                ForEach(CutAggressiveness.allCases, id: \.self) { a in
+                    Button(a.rawValue.capitalized) { aggressiveness = a }
+                }
+            } label: {
+                Text(aggressiveness.rawValue.capitalized)
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .fixedSize()
+            .help("How much breathing room to keep around a cut")
             Button("Clear") { _ = clearSelection() }
                 .buttonStyle(.plain)
                 .font(.system(size: AppTheme.FontSize.sm))
@@ -191,7 +205,7 @@ struct TranscriptTab: View {
     @discardableResult
     private func deleteSelection() -> Bool {
         guard let transcript, !selection.isEmpty else { return false }
-        switch editor.cutSelectedWords(in: transcript, selected: selection, aggressiveness: .balanced, undoName: "Delete Words") {
+        switch editor.cutSelectedWords(in: transcript, selected: selection, aggressiveness: aggressiveness, undoName: "Delete Words") {
         case .ok:
             selection = []
             anchor = nil
@@ -213,6 +227,7 @@ struct TranscriptTab: View {
         phase = .loading
         selection = []
         anchor = nil
+        editor.ensureSpeechAnalysisForTimeline()   // warm VAD so cuts snap to silence
         do {
             let t = try await editor.loadTimelineTranscript()
             transcript = t

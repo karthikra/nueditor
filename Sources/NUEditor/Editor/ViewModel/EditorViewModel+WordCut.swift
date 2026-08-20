@@ -28,6 +28,7 @@ extension EditorViewModel {
         undoName: String
     ) -> WordCutOutcome {
         let keepGapFrames = Int((aggressiveness.keptGapMs / 1000.0 * Double(timeline.fps)).rounded())
+        let snapWindow = max(2, keepGapFrames * 2)
         var removedTexts: [String] = []
         var rangesByTrack: [Int: [FrameRange]] = [:]
         var involvedClips: [String] = []
@@ -44,10 +45,16 @@ extension EditorViewModel {
             let ranges = WordCutPlanner.cutRanges(
                 words: plan, clipStart: group.clipStartFrame, clipEnd: group.clipEndFrame, keepGapFrames: keepGapFrames
             )
-            if !ranges.isEmpty {
-                rangesByTrack[group.trackIndex, default: []].append(contentsOf: ranges)
-                involvedClips.append(group.clipId)
+            guard !ranges.isEmpty else { continue }
+            // Snap each cut boundary into the nearest VAD silence so the splice lands in a
+            // breath gap — silence-to-silence removes the click and leftover word fragments.
+            // No-op (falls back to the word-boundary cut) when analysis isn't ready.
+            let clip = findClip(id: group.clipId).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] }
+            let snapped = ranges.map { r in
+                clip.map { snapCutRangeToSilence(clip: $0, range: r, window: snapWindow) } ?? r
             }
+            rangesByTrack[group.trackIndex, default: []].append(contentsOf: RippleEngine.mergeRanges(snapped))
+            involvedClips.append(group.clipId)
         }
         guard !rangesByTrack.isEmpty else { return .empty }
 
@@ -79,6 +86,39 @@ extension EditorViewModel {
             return .ok(WordCutResult(removedFrames: report.removedFrames, removedTexts: removedTexts))
         case .refused(let reason):
             return .refused(reason)
+        }
+    }
+
+    /// Snap a cut range's boundaries into the nearest VAD silence within `window` frames,
+    /// so the splice sits in a breath gap. Silence never contains speech, so this can't
+    /// drop a kept word; when analysis isn't ready every boundary stays put.
+    private func snapCutRangeToSilence(clip: Clip, range: FrameRange, window: Int) -> FrameRange {
+        let s = snapBoundaryToSilence(clip: clip, frame: range.start, window: window)
+        let e = snapBoundaryToSilence(clip: clip, frame: range.end, window: window)
+        guard e > s else { return range }
+        return FrameRange(start: s, end: e)
+    }
+
+    private func snapBoundaryToSilence(clip: Clip, frame: Int, window: Int) -> Int {
+        if deadAirSpanRange(clip: clip, atTimelineFrame: frame) != nil { return frame }  // already quiet
+        for d in 1...window {
+            if let span = deadAirSpanRange(clip: clip, atTimelineFrame: frame - d) {
+                return min(max(frame, span.start), span.end)   // nearest edge of the earlier silence
+            }
+            if let span = deadAirSpanRange(clip: clip, atTimelineFrame: frame + d) {
+                return min(max(frame, span.start), span.end)   // nearest edge of the later silence
+            }
+        }
+        return frame
+    }
+
+    /// Kick off (idempotent, cached) VAD + waveform analysis for the timeline's speech clips,
+    /// so silence-snapping has data by the time the user cuts.
+    func ensureSpeechAnalysisForTimeline() {
+        let refs = Set(timeline.tracks.flatMap { $0.clips.map(\.mediaRef) })
+        for asset in mediaAssets
+        where refs.contains(asset.id) && (asset.type == .audio || (asset.type == .video && asset.hasAudio)) {
+            mediaVisualCache.generateWaveform(for: asset)
         }
     }
 }
