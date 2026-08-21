@@ -1,0 +1,156 @@
+import Foundation
+import Testing
+@testable import NUEditor
+
+@Suite("NUEDITBackendSettings — address resolution")
+struct NUEDITBackendSettingsTests {
+
+    private func hubTOML(_ contents: String) throws -> URL {
+        let dir = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("hub.toml")
+        try contents.write(to: file, atomically: true, encoding: .utf8)
+        return file
+    }
+
+    @Test func readsTheTowerAddressFromTheMachineSSOT() async throws {
+        let file = try hubTOML("""
+            token = "nuh_secret"
+            url = "http://100.96.118.41:8011/mcp"
+            api_url = "http://100.96.118.41:8000"
+            """)
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let defaults = try #require(UserDefaults(suiteName: "test.\(UUID().uuidString)"))
+        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file)
+        #expect(settings.baseURL?.absoluteString == "http://100.96.118.41:8000")
+        #expect(settings.token == nil)
+    }
+
+    @Test func settingsOverrideWinsOverTheSSOT() async throws {
+        let file = try hubTOML(#"api_url = "http://tower:8000""#)
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let defaults = try #require(UserDefaults(suiteName: "test.\(UUID().uuidString)"))
+        defaults.set("http://127.0.0.1:9000", forKey: NUEDITBackendSettingsStore.baseURLOverrideKey)
+        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file)
+        #expect(settings.baseURL?.absoluteString == "http://127.0.0.1:9000")
+    }
+
+    // No address anywhere means unconfigured — never a guessed host.
+    @Test func missingAddressLeavesTheBackendUnconfigured() async throws {
+        let file = try hubTOML(#"url = "http://tower:8011/mcp""#)
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let defaults = try #require(UserDefaults(suiteName: "test.\(UUID().uuidString)"))
+        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file)
+        #expect(settings.baseURL == nil)
+        #expect(!settings.isConfigured)
+    }
+
+    @Test(arguments: [
+        ("http://tower:8000/", "http://tower:8000"),
+        ("http://tower:8000/api/v1", "http://tower:8000"),
+        ("http://tower:8000/api/v1/", "http://tower:8000"),
+        ("  http://tower:8000  ", "http://tower:8000"),
+    ])
+    func normalizesTrailingSlashAndApiSuffix(raw: String, expected: String) {
+        #expect(NUEDITBackendSettingsStore.normalizedBaseURL(raw)?.absoluteString == expected)
+    }
+
+    @Test(arguments: ["", "   ", "tower:8000", "not a url"])
+    func rejectsAddressesWithoutASchemeOrHost(raw: String) {
+        #expect(NUEDITBackendSettingsStore.normalizedBaseURL(raw) == nil)
+    }
+}
+
+@Suite("MultipartFormData")
+struct MultipartFormDataTests {
+
+    private func scratch() throws -> URL {
+        let dir = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    @Test func writesFieldsAndFilesInOneStreamedBody() throws {
+        let dir = try scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let proxy = dir.appendingPathComponent("vlm.mp4")
+        try Data("PROXYBYTES".utf8).write(to: proxy)
+
+        let body = try MultipartFormData.write(
+            fields: ["metadata": #"{"checksum":"abc"}"#],
+            files: [.init(name: "vlm_proxy", filename: "vlm_proxy.mp4", contentType: "video/mp4", fileURL: proxy)],
+            in: dir,
+            boundary: "BOUND"
+        )
+        defer { try? FileManager.default.removeItem(at: body.fileURL) }
+        let text = try String(contentsOf: body.fileURL, encoding: .utf8)
+
+        #expect(body.contentType == "multipart/form-data; boundary=BOUND")
+        #expect(text.contains(#"Content-Disposition: form-data; name="metadata""#))
+        #expect(text.contains(#"{"checksum":"abc"}"#))
+        #expect(text.contains(#"name="vlm_proxy"; filename="vlm_proxy.mp4""#))
+        #expect(text.contains("Content-Type: video/mp4"))
+        #expect(text.contains("PROXYBYTES"))
+        #expect(text.hasSuffix("--BOUND--\r\n"))
+    }
+
+    // A body that can't be assembled must not leave a half-written file behind for the uploader.
+    @Test func leavesNothingBehindWhenAFileIsMissing() throws {
+        let dir = try scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(throws: (any Error).self) {
+            _ = try MultipartFormData.write(
+                fields: [:],
+                files: [.init(name: "audio", filename: "a.wav", contentType: "audio/wav",
+                              fileURL: dir.appendingPathComponent("gone.wav"))],
+                in: dir
+            )
+        }
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        #expect(leftovers.isEmpty, "staged body survived a failure: \(leftovers)")
+    }
+}
+
+@Suite("NUEDITBackendClient — responses")
+struct NUEDITBackendClientResponseTests {
+
+    private func response(_ status: Int) -> URLResponse {
+        HTTPURLResponse(url: URL(string: "http://tower:8000")!, statusCode: status, httpVersion: nil, headerFields: nil)!
+    }
+
+    @Test func acceptsSuccess() throws {
+        try NUEDITBackendClient.validate(response: response(202), data: Data())
+    }
+
+    // The tower explains itself in `detail`; a bare status code would make a bad checksum
+    // indistinguishable from a bad project id.
+    @Test func surfacesTheTowerExplanation() {
+        let data = Data(#"{"detail":"checksum is required for edge ingest"}"#.utf8)
+        #expect(NUEDITBackendClient.detail(from: data) == "checksum is required for edge ingest")
+        #expect(throws: BackendError.self) {
+            try NUEDITBackendClient.validate(response: response(400), data: data)
+        }
+    }
+
+    @Test func flattensValidationErrorLists() {
+        let data = Data(#"{"detail":[{"loc":["body"],"msg":"field required","type":"value_error"}]}"#.utf8)
+        #expect(NUEDITBackendClient.detail(from: data) == "field required")
+    }
+
+    @Test func duplicateIsSuccessNotFailure() throws {
+        let data = Data(#"{"id":"f-1","status":"duplicate","filename":"a.mov"}"#.utf8)
+        let decoded = try JSONDecoder().decode(NUEDITBackendClient.EdgeRegisterResponse.self, from: data)
+        #expect(decoded.isDuplicate)
+        #expect(decoded.id == "f-1")
+    }
+
+    @Test func derivativeNamesMatchTheTowerContract() {
+        // Keys and filenames are DERIVATIVES in the tower's core/edge_ingest.py.
+        #expect(NUEDITBackendClient.Derivative.vlmProxy.rawValue == "vlm_proxy")
+        #expect(NUEDITBackendClient.Derivative.vlmProxy.filename == "vlm_proxy.mp4")
+        #expect(NUEDITBackendClient.Derivative.audio.rawValue == "audio")
+        #expect(NUEDITBackendClient.Derivative.audio.filename == "audio_cleaned.wav")
+        #expect(NUEDITBackendClient.Derivative.previewProxy.filename == "preview_proxy.mp4")
+        #expect(NUEDITBackendClient.Derivative.thumbnail.filename == "thumbnail.jpg")
+    }
+}

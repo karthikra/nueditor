@@ -6,6 +6,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case agent
     case skills
     case storage
+    case backend
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .agent: return "Agent"
         case .skills: return "Skills"
         case .storage: return "Storage"
+        case .backend: return "Tower"
         }
     }
 
@@ -26,6 +28,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .agent: return "paperplane"
         case .skills: return "book.closed"
         case .storage: return "internaldrive"
+        case .backend: return "antenna.radiowaves.left.and.right"
         }
     }
 }
@@ -120,6 +123,8 @@ private struct SettingsDetail: View {
                                 EmptyView()
                             case .storage:
                                 StoragePane()
+                            case .backend:
+                                BackendPane()
                             }
                         }
                         .frame(maxWidth: AppTheme.Settings.contentMaxWidth, alignment: .leading)
