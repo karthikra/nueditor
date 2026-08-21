@@ -161,7 +161,7 @@ struct FrameRendererColorTagTests {
             timeRange: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 30)),
             layers: [layer],
             renderSize: CGSize(width: 2, height: 2),
-            fps: 30
+            frameRate: FrameRate(nominal: 30)
         )
 
         FrameRenderer.render(

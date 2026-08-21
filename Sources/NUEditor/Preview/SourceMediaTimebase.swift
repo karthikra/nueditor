@@ -6,7 +6,12 @@ enum SourceMediaTimebase {
     }
 
     static func absoluteTime(relativeFrame: Int, fps: Int, trackStart: CMTime) -> CMTime {
-        trackStart + CMTime(value: CMTimeValue(relativeFrame), timescale: CMTimeScale(fps))
+        absoluteTime(relativeFrame: relativeFrame, rate: FrameRate(nominal: fps), trackStart: trackStart)
+    }
+
+    /// Timeline frames: the rate may be an NTSC one, where a frame is not 1/nominal seconds.
+    static func absoluteTime(relativeFrame: Int, rate: FrameRate, trackStart: CMTime) -> CMTime {
+        trackStart + rate.time(frame: relativeFrame)
     }
 
     static func relativeSeconds(absoluteTime: CMTime, trackStart: CMTime) -> Double {
@@ -18,8 +23,12 @@ enum SourceMediaTimebase {
     }
 
     static func relativeFrame(absoluteTime: CMTime, fps: Int, trackStart: CMTime) -> Int {
+        relativeFrame(absoluteTime: absoluteTime, rate: FrameRate(nominal: fps), trackStart: trackStart)
+    }
+
+    static func relativeFrame(absoluteTime: CMTime, rate: FrameRate, trackStart: CMTime) -> Int {
         let seconds = relativeSeconds(absoluteTime: absoluteTime, trackStart: trackStart)
         guard seconds.isFinite else { return 0 }
-        return secondsToFrame(seconds: max(0, seconds), fps: fps)
+        return rate.frame(seconds: max(0, seconds))
     }
 }

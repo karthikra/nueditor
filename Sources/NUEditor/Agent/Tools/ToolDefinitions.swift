@@ -128,7 +128,8 @@ enum ToolDefinitions {
             description: "Change the project's frame rate, resolution, or aspect ratio. Pass any combination of fps, explicit width+height, aspectRatio, and quality. aspectRatio and explicit width/height are mutually exclusive; quality scales the current aspect ratio (or the selected preset when combined with aspectRatio). The timeline's existing clips are re-fitted automatically: auto-fit transforms recalculate for the new canvas size, and all frame positions/durations rescale when fps changes. Undoable.",
             inputSchema: objectSchema(
                 properties: [
-                    "fps": ["type": "integer", "description": "Frame rate in frames per second. Common values: 24, 25, 30, 48, 50, 60."],
+                    "fps": ["type": "integer", "description": "Frame rate as frames are COUNTED: 24, 25, 30, 48, 50, 60. For a broadcast rate pass the whole number and set ntsc — 23.976 is fps 24 + ntsc true, never fps 23."],
+                    "ntsc": ["type": "boolean", "description": "The 1000/1001 pulldown: 24 → 23.976, 30 → 29.97, 60 → 59.94, 120 → 119.88 (other rates have no NTSC variant and are rejected). The project holds the exact rational 24000/1001, so conformed media tagged 24000/1001 matches it frame for frame. Changing only this rescales nothing: frame numbers stay put and each frame lands 0.1% later. get_timeline reports fps, ntsc, fpsExact and fpsRational."],
                     "width": ["type": "integer", "description": "Canvas width in pixels. Use with height for an exact resolution. Mutually exclusive with aspectRatio."],
                     "height": ["type": "integer", "description": "Canvas height in pixels. Use with width for an exact resolution. Mutually exclusive with aspectRatio."],
                     "aspectRatio": ["type": "string", "enum": ["16:9", "9:16", "1:1", "4:3", "2.4:1", "9:14"], "description": "Preset aspect ratio — sets both width and height from the preset, or combined with quality to pick a specific size. Mutually exclusive with width/height."],
@@ -1092,7 +1093,8 @@ enum ToolDefinitions {
                 "name": ["type": "string", "description": "Project name. For open/close, matched case-insensitively; for create, defaults to 'Untitled Project'."],
                 "id": ["type": "string", "description": "Project id returned by action='list'. Used by open or close."],
                 "path": ["type": "string", "description": "Filesystem path to a .nueditor package. Used by open or close."],
-                "fps": ["type": "integer", "description": "Create only. Optional timeline frame rate (1-120)."],
+                "fps": ["type": "integer", "description": "Create only. Optional timeline frame rate, as frames are COUNTED (1-120). Pair with ntsc for a broadcast rate: fps 24 + ntsc true is 23.976."],
+                "ntsc": ["type": "boolean", "description": "Create only. Applies the 1000/1001 pulldown to fps: 24 → 23.976, 30 → 29.97, 60 → 59.94, 120 → 119.88. The project then holds that rate exactly (24000/1001, not the decimal 23.976), and frame numbers are unchanged — only the time a frame lands on moves."],
                 "aspectRatio": [
                     "type": "string",
                     "enum": ["16:9", "9:16", "1:1", "4:3", "2.4:1", "9:14"],

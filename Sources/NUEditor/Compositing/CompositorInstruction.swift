@@ -38,13 +38,13 @@ final class CompositorInstruction: NSObject, AVVideoCompositionInstructionProtoc
     let passthroughTrackID = kCMPersistentTrackID_Invalid
     let layers: [LayerPlan]
     let renderSize: CGSize
-    let fps: Int
+    let frameRate: FrameRate
 
-    init(timeRange: CMTimeRange, layers: [LayerPlan], renderSize: CGSize, fps: Int) {
+    init(timeRange: CMTimeRange, layers: [LayerPlan], renderSize: CGSize, frameRate: FrameRate) {
         self.timeRange = timeRange
         self.layers = layers
         self.renderSize = renderSize
-        self.fps = fps
+        self.frameRate = frameRate
         var all: [CMPersistentTrackID] = []
         for layer in layers { layer.collectTrackIDs(into: &all) }
         var seen = Set<CMPersistentTrackID>()

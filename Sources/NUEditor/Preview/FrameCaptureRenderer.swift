@@ -73,7 +73,7 @@ enum FrameCaptureRenderer {
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
 
-        let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(timeline.fps))
+        let time = timeline.frameRate.time(frame: frame)
         let image = try await generateImage(using: generator, at: time).image
         return try stage(image, actualSourceSeconds: nil)
     }

@@ -119,7 +119,7 @@ final class VideoEngine {
 
         let time = SourceMediaTimebase.absoluteTime(
             relativeFrame: frame,
-            fps: editor.timeline.fps,
+            rate: editor.timeline.frameRate,
             trackStart: sourceTrackStart
         )
         let tolerance: CMTime = mode == .interactiveScrub
@@ -579,10 +579,10 @@ final class VideoEngine {
     }
 
     private func playerTime(forPreviewFrame frame: Int) -> CMTime? {
-        guard let fps = editor?.timeline.fps, fps > 0 else { return nil }
+        guard let rate = editor?.timeline.frameRate else { return nil }
         return SourceMediaTimebase.absoluteTime(
             relativeFrame: frame,
-            fps: fps,
+            rate: rate,
             trackStart: sourceTrackStart
         )
     }
@@ -674,7 +674,7 @@ final class VideoEngine {
 
         let frame = SourceMediaTimebase.relativeFrame(
             absoluteTime: time,
-            fps: editor.timeline.fps,
+            rate: editor.timeline.frameRate,
             trackStart: sourceTrackStart
         )
         let duration = playbackDurationFrames(for: editor)
@@ -714,16 +714,19 @@ final class VideoEngine {
         guard editor.activePreviewTab == .timeline else {
             return editor.activePreviewDurationFrames
         }
-        return Self.frameCount(for: compositionDuration, fps: editor.timeline.fps)
+        return Self.frameCount(for: compositionDuration, rate: editor.timeline.frameRate)
     }
 
     nonisolated static func frameCount(for duration: CMTime, fps: Int) -> Int {
-        guard duration.isNumeric,
-              let timescale = CMTimeScale(exactly: fps),
-              timescale > 0 else { return 0 }
-        let scaled = CMTimeConvertScale(duration, timescale: timescale, method: .roundHalfAwayFromZero)
-        guard let frames = Int(exactly: scaled.value) else { return 0 }
-        return max(0, frames)
+        frameCount(for: duration, rate: FrameRate(nominal: fps))
+    }
+
+    nonisolated static func frameCount(for duration: CMTime, rate: FrameRate) -> Int {
+        guard duration.isNumeric, rate.timescale > 0 else { return 0 }
+        let scaled = CMTimeConvertScale(duration, timescale: rate.timescale, method: .roundHalfAwayFromZero)
+        // At an NTSC rate one frame spans 1001 ticks, so ticks are not frames.
+        guard let ticks = Int(exactly: scaled.value) else { return 0 }
+        return max(0, ticks / Int(rate.frameDelta))
     }
 
     private static let interactiveSeekInterval: TimeInterval = 1.0 / 30.0

@@ -139,12 +139,12 @@ struct InspectorView: View {
                             truncate: .middle
                         )
                     }
-                    plainMetadataRow(label: "Duration", value: formatDuration(Double(editor.timeline.totalFrames) / Double(editor.timeline.fps)))
+                    plainMetadataRow(label: "Duration", value: formatDuration(editor.timeline.frameRate.seconds(frame: editor.timeline.totalFrames)))
                 }
 
                 metadataSection(title: "Settings") {
                     menuMetadataRow(label: "Resolution", value: "\(editor.timeline.width) × \(editor.timeline.height)") { qualityMenuItems }
-                    menuMetadataRow(label: "Frame Rate", value: "\(editor.timeline.fps) fps") { fpsMenuItems }
+                    menuMetadataRow(label: "Frame Rate", value: "\(editor.timeline.frameRate.displayName) fps") { fpsMenuItems }
                     menuMetadataRow(label: "Aspect Ratio", value: formatAspectRatio(width: editor.timeline.width, height: editor.timeline.height)) { aspectMenuItems }
                 }
             }
@@ -231,16 +231,32 @@ struct InspectorView: View {
         }
     }
 
+    /// Broadcast rates sit beside their whole-number siblings: 23.976 is 24 with the 1000/1001
+    /// pulldown, and the project holds it exactly.
+    private static let projectFrameRates: [FrameRate] = [
+        FrameRate(nominal: 24, isNTSC: true),
+        FrameRate(nominal: 24),
+        FrameRate(nominal: 25),
+        FrameRate(nominal: 30, isNTSC: true),
+        FrameRate(nominal: 30),
+        FrameRate(nominal: 50),
+        FrameRate(nominal: 60, isNTSC: true),
+        FrameRate(nominal: 60),
+    ]
+
     @ViewBuilder
     private var fpsMenuItems: some View {
-        ForEach([24, 25, 30, 50, 60], id: \.self) { fps in
+        ForEach(Self.projectFrameRates, id: \.self) { rate in
             Button {
-                editor.applyTimelineSettings(fps: fps, width: editor.timeline.width, height: editor.timeline.height)
+                editor.applyTimelineSettings(
+                    fps: rate.nominal, ntsc: rate.isNTSC,
+                    width: editor.timeline.width, height: editor.timeline.height
+                )
             } label: {
                 HStack {
-                    Text("\(fps) fps")
+                    Text("\(rate.displayName) fps")
                     Spacer()
-                    if editor.timeline.fps == fps {
+                    if editor.timeline.frameRate == rate {
                         Image(systemName: "checkmark")
                     }
                 }

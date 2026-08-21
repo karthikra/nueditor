@@ -111,8 +111,8 @@ extension EditorViewModel {
     }
 
     func finalizeTransitionClip(placeholderId: String, asset: MediaAsset) {
-        patchGeneratingClips(placeholderId: placeholderId) { clip, fps in
-            let realFrames = max(1, secondsToFrame(seconds: asset.duration, fps: fps))
+        patchGeneratingClips(placeholderId: placeholderId) { clip, rate in
+            let realFrames = max(1, secondsToFrame(seconds: asset.duration, rate: rate))
             clip.speed = Double(realFrames) / Double(max(1, clip.durationFrames))
             clip.trimStartFrame = 0
             clip.trimEndFrame = 0

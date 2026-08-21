@@ -16,12 +16,18 @@ struct TimelineViewState: Codable, Sendable, Equatable {
 struct Timeline: Codable, Sendable, Equatable, Identifiable {
     var id: String = UUID().uuidString
     var name: String = "Timeline 1"
+    /// Frames per second as counted. 23.976 is `fps: 24, ntsc: true` — see `frameRate`.
     var fps: Int = 30
+    /// The 1000/1001 pulldown that makes 24 into 23.976, 30 into 29.97, 60 into 59.94.
+    var ntsc: Bool = false
     var width: Int = 1920
     var height: Int = 1080
     var settingsConfigured: Bool = false
     var folderId: String?
     var tracks: [Track] = []
+
+    /// The exact rate. Every conversion between frames and time goes through this.
+    var frameRate: FrameRate { FrameRate(nominal: fps, isNTSC: ntsc) }
 
     var totalFrames: Int {
         var maxFrame = 0
@@ -60,7 +66,7 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, fps, width, height, settingsConfigured, folderId, tracks
+        case id, name, fps, ntsc, width, height, settingsConfigured, folderId, tracks
     }
 }
 
@@ -71,6 +77,7 @@ extension Timeline {
             id: (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString,
             name: (try? c.decode(String.self, forKey: .name)) ?? "Timeline 1",
             fps: try c.decode(Int.self, forKey: .fps),
+            ntsc: (try? c.decode(Bool.self, forKey: .ntsc)) ?? false,
             width: try c.decode(Int.self, forKey: .width),
             height: try c.decode(Int.self, forKey: .height),
             settingsConfigured: (try? c.decode(Bool.self, forKey: .settingsConfigured)) ?? false,

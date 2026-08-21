@@ -25,7 +25,7 @@ extension EditorViewModel {
         actionName: String
     ) -> String? {
         guard let asset = mediaAssets.first(where: { $0.id == placeholderId }) else { return nil }
-        let durationFrames = max(1, secondsToFrame(seconds: spanSeconds, fps: timeline.fps))
+        let durationFrames = max(1, secondsToFrame(seconds: spanSeconds, rate: timeline.frameRate))
 
         let before = timeline
         let ids = undo.withoutRegistration {
@@ -49,22 +49,22 @@ extension EditorViewModel {
 
     // Patch all timelines with placeholders for this asset.
     func finalizeGeneratingClip(placeholderId: String, asset: MediaAsset) {
-        patchGeneratingClips(placeholderId: placeholderId) { clip, fps in
-            clip.durationFrames = max(1, secondsToFrame(seconds: asset.duration, fps: fps))
+        patchGeneratingClips(placeholderId: placeholderId) { clip, rate in
+            clip.durationFrames = max(1, secondsToFrame(seconds: asset.duration, rate: rate))
             clip.trimStartFrame = 0
             clip.trimEndFrame = 0
         }
     }
 
-    func patchGeneratingClips(placeholderId: String, _ patch: (inout Clip, Int) -> Void) {
+    func patchGeneratingClips(placeholderId: String, _ patch: (inout Clip, FrameRate) -> Void) {
         var touched: Set<String> = []
         undo.withoutRegistration {
             for i in timelines.indices {
-                let fps = timelines[i].fps
+                let rate = timelines[i].frameRate
                 for ti in timelines[i].tracks.indices {
                     for ci in timelines[i].tracks[ti].clips.indices
                     where timelines[i].tracks[ti].clips[ci].mediaRef == placeholderId {
-                        patch(&timelines[i].tracks[ti].clips[ci], fps)
+                        patch(&timelines[i].tracks[ti].clips[ci], rate)
                         touched.insert(timelines[i].id)
                     }
                 }

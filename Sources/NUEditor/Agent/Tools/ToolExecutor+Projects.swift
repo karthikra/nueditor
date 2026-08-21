@@ -8,7 +8,7 @@ extension ToolExecutor {
         do {
             try validateUnknownKeys(
                 args,
-                allowed: ["action", "name", "id", "path", "fps", "aspectRatio", "quality"],
+                allowed: ["action", "name", "id", "path", "fps", "ntsc", "aspectRatio", "quality"],
                 path: "manage_project"
             )
             guard let action = args.string("action") else {
@@ -81,12 +81,12 @@ extension ToolExecutor {
     }
 
     private func createProject(_ args: [String: Any]) async throws -> ToolResult {
-        try validateUnknownKeys(args, allowed: ["name", "fps", "aspectRatio", "quality"], path: "manage_project action='create'")
+        try validateUnknownKeys(args, allowed: ["name", "fps", "ntsc", "aspectRatio", "quality"], path: "manage_project action='create'")
         if let name = args["name"], !(name is String) {
             throw ToolError("manage_project action='create': 'name' must be a string.")
         }
         let name = args["name"] as? String ?? Project.defaultProjectName
-        let settingsArgs = args.filter { ["fps", "aspectRatio", "quality"].contains($0.key) }
+        let settingsArgs = args.filter { ["fps", "ntsc", "aspectRatio", "quality"].contains($0.key) }
         let settings = try settingsArgs.isEmpty ? nil : validateProjectSettings(settingsArgs)
         let doc = try await AppState.shared.createProject(named: name)
         bindProject(doc)
@@ -177,6 +177,8 @@ extension ToolExecutor {
             "name": doc.displayName ?? Project.defaultProjectName,
             "path": doc.fileURL?.path ?? "",
             "fps": editor.timeline.fps,
+            "ntsc": editor.timeline.ntsc,
+            "fpsExact": editor.timeline.frameRate.framesPerSecond.rounded(toPlaces: 4),
             "resolution": "\(editor.timeline.width)x\(editor.timeline.height)",
             "mediaCount": editor.mediaAssets.count,
             "canGenerate": Self.canGenerate,

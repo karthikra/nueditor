@@ -165,14 +165,14 @@ extension ToolExecutor {
     /// domain: `source: [startSeconds, endSeconds]` picks a span of the asset (unclamped for
     /// stills — an image is an unbounded still), an exact frame count pins the timeline length.
     fileprivate func resolvePlacement(
-        _ asset: MediaAsset, fps: Int,
+        _ asset: MediaAsset, rate: FrameRate,
         durationFrames: Int?, source: [Double]?, path: String, framesLabel: String = "durationFrames"
     ) throws -> (trimStart: Int, duration: Int, trimEnd: Int?) {
         guard durationFrames == nil || source == nil else {
             throw ToolError("\(path): set source OR \(framesLabel), not both — source picks a span of the asset, \(framesLabel) an exact timeline length.")
         }
         let isStill = asset.type == .image
-        let sourceLen = secondsToFrame(seconds: asset.duration, fps: fps)
+        let sourceLen = secondsToFrame(seconds: asset.duration, rate: rate)
 
         if let source {
             guard source.count == 2 else {
@@ -186,8 +186,8 @@ extension ToolExecutor {
             guard end > start else {
                 throw ToolError("\(path): source end (\(source[1])) must be greater than start (\(source[0]))\(isStill ? "" : "; source is \(asset.duration)s").")
             }
-            let trimStart = secondsToFrame(seconds: start, fps: fps)
-            let duration = max(1, secondsToFrame(seconds: end, fps: fps) - trimStart)
+            let trimStart = secondsToFrame(seconds: start, rate: rate)
+            let duration = max(1, secondsToFrame(seconds: end, rate: rate) - trimStart)
             return (trimStart, duration, nil)
         }
         if let d = durationFrames {
@@ -250,7 +250,7 @@ extension ToolExecutor {
             if let end = p.entry.endFrame, end <= p.entry.startFrame {
                 throw ToolError("entries[\(idx)]: endFrame (\(end)) must be greater than startFrame (\(p.entry.startFrame))")
             }
-            let place = try resolvePlacement(p.asset, fps: editor.timeline.fps,
+            let place = try resolvePlacement(p.asset, rate: editor.timeline.frameRate,
                                              durationFrames: p.entry.endFrame.map { $0 - p.entry.startFrame },
                                              source: p.entry.source, path: "entries[\(idx)]", framesLabel: "endFrame")
             specs.append(.init(asset: p.asset, trackId: p.trackId, startFrame: p.entry.startFrame,
@@ -354,7 +354,7 @@ extension ToolExecutor {
         var specs: [EditorViewModel.RippleInsertSpec] = []
         specs.reserveCapacity(input.entries.count)
         for (idx, entry) in input.entries.enumerated() {
-            let place = try resolvePlacement(resolvedAssets[idx], fps: editor.timeline.fps,
+            let place = try resolvePlacement(resolvedAssets[idx], rate: editor.timeline.frameRate,
                                              durationFrames: entry.durationFrames,
                                              source: entry.source, path: "entries[\(idx)]")
             specs.append(.init(asset: resolvedAssets[idx], durationFrames: place.duration,

@@ -23,7 +23,9 @@ extension EditorViewModel {
         case mismatch(clipFPS: Int, clipWidth: Int, clipHeight: Int)
     }
 
-    func applyTimelineSettings(fps: Int, width: Int, height: Int) {
+    /// `ntsc: nil` leaves the pulldown as it is. Switching 24 → 23.976 keeps every frame number:
+    /// only the time a frame lands on moves, so nothing is rescaled.
+    func applyTimelineSettings(fps: Int, ntsc: Bool? = nil, width: Int, height: Int) {
         let before = projectSettingsSnapshot()
         let prevFPS = timeline.fps
         let prevWidth = timeline.width
@@ -79,6 +81,7 @@ extension EditorViewModel {
 
         for i in timelines.indices {
             timelines[i].fps = fps
+            if let ntsc { timelines[i].ntsc = ntsc && timelines[i].frameRate.supportsNTSC }
             timelines[i].settingsConfigured = true
         }
         timeline.width = width

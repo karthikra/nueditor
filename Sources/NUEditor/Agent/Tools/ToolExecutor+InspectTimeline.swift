@@ -58,11 +58,11 @@ extension ToolExecutor {
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
 
-        let timescale = CMTimeScale(timeline.fps)
+        let frameRate = timeline.frameRate
         var imageBlocks: [ToolResult.Block] = []
         var renderedFrames: [Int] = []
         for frame in sampledFrames {
-            let time = CMTime(value: CMTimeValue(frame), timescale: timescale)
+            let time = frameRate.time(frame: frame)
             guard let videoCG = try? await generator.image(at: time).image else { continue }
             // videoComposition already composites text via CustomVideoCompositor.
             let labeled = Self.burnLabel("f\(frame)", into: videoCG) ?? videoCG

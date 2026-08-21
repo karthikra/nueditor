@@ -502,8 +502,8 @@ final class EditorViewModel {
         let shouldLink = addLinkedAudio && targetIsVideo && asset.hasAudio
             && (asset.type == .video || asset.type == .sequence)
         let linkGroupId: String? = shouldLink ? UUID().uuidString : nil
-        let trimStart = sourceSegment.map { secondsToFrame(seconds: $0.lowerBound, fps: timeline.fps) } ?? 0
-        let totalSourceFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
+        let trimStart = sourceSegment.map { secondsToFrame(seconds: $0.lowerBound, rate: timeline.frameRate) } ?? 0
+        let totalSourceFrames = secondsToFrame(seconds: asset.duration, rate: timeline.frameRate)
 
         // sourceSegment (source seconds) and explicit trim frames are mutually exclusive; callers pass one.
         let applyTrim: (inout Clip) -> Void = { clip in
@@ -578,7 +578,7 @@ final class EditorViewModel {
 
     func clipDurationFrames(for asset: MediaAsset, segment: ClosedRange<Double>?) -> Int {
         let seconds = segment.map { $0.upperBound - $0.lowerBound } ?? asset.duration
-        return max(1, secondsToFrame(seconds: seconds, fps: timeline.fps))
+        return max(1, secondsToFrame(seconds: seconds, rate: timeline.frameRate))
     }
 
     func findClip(id: String) -> ClipLocation? {

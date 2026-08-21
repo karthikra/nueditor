@@ -25,7 +25,7 @@ extension EditorViewModel {
             return timeline.totalFrames
         case .mediaAsset(let id, _, _):
             guard let asset = mediaAssets.first(where: { $0.id == id }) else { return 0 }
-            return secondsToFrame(seconds: asset.duration, fps: timeline.fps)
+            return secondsToFrame(seconds: asset.duration, rate: timeline.frameRate)
         }
     }
 

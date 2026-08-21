@@ -50,10 +50,10 @@ enum TimelineRenderer {
 
         session.videoComposition = result.videoComposition
 
-        let timescale = CMTimeScale(timeline.fps)
+        let frameRate = timeline.frameRate
         session.timeRange = CMTimeRange(
-            start: CMTime(value: CMTimeValue(startFrame), timescale: timescale),
-            duration: CMTime(value: CMTimeValue(frameCount), timescale: timescale)
+            start: frameRate.time(frame: startFrame),
+            duration: frameRate.duration(frames: frameCount)
         )
 
         let outputURL = FileManager.default.temporaryDirectory

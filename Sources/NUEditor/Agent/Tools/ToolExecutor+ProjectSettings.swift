@@ -2,11 +2,12 @@ import Foundation
 
 fileprivate struct SetProjectSettingsInput: DecodableToolArgs {
     let fps: Int?
+    let ntsc: Bool?
     let width: Int?
     let height: Int?
     let aspectRatio: String?
     let quality: String?
-    static let allowedKeys: Set<String> = ["fps", "width", "height", "aspectRatio", "quality"]
+    static let allowedKeys: Set<String> = ["fps", "ntsc", "width", "height", "aspectRatio", "quality"]
 }
 
 extension ToolExecutor {
@@ -21,9 +22,9 @@ extension ToolExecutor {
     func validateProjectSettings(_ args: [String: Any]) throws -> ValidatedProjectSettings {
         let input: SetProjectSettingsInput = try decodeToolArgs(args, path: "set_project_settings")
 
-        guard input.fps != nil || input.width != nil || input.height != nil
+        guard input.fps != nil || input.ntsc != nil || input.width != nil || input.height != nil
                 || input.aspectRatio != nil || input.quality != nil else {
-            throw ToolError("Provide at least one of: fps, width, height, aspectRatio, quality")
+            throw ToolError("Provide at least one of: fps, ntsc, width, height, aspectRatio, quality")
         }
         if input.aspectRatio != nil && (input.width != nil || input.height != nil) {
             throw ToolError("'aspectRatio' and explicit 'width'/'height' are mutually exclusive")
@@ -71,6 +72,11 @@ extension ToolExecutor {
         let qualityPreset = settings.qualityPreset
 
         let newFPS = input.fps ?? editor.timeline.fps
+        let newNTSC = input.ntsc ?? editor.timeline.ntsc
+        let newRate = FrameRate(nominal: newFPS, isNTSC: newNTSC)
+        if newNTSC && !newRate.supportsNTSC {
+            throw ToolError("ntsc applies to 24, 30, 60, and 120 (making 23.976, 29.97, 59.94, 119.88). \(newFPS) has no NTSC variant.")
+        }
         let newWidth: Int
         let newHeight: Int
 
@@ -98,17 +104,22 @@ extension ToolExecutor {
         }
 
         let prevFPS = editor.timeline.fps
+        let prevNTSC = editor.timeline.ntsc
         let prevWidth = editor.timeline.width
         let prevHeight = editor.timeline.height
 
-        editor.applyTimelineSettings(fps: newFPS, width: newWidth, height: newHeight)
+        editor.applyTimelineSettings(fps: newFPS, ntsc: newNTSC, width: newWidth, height: newHeight)
 
         var changed: [String] = []
         if newFPS != prevFPS { changed.append("fps") }
+        if newNTSC != prevNTSC { changed.append("ntsc") }
         if newWidth != prevWidth || newHeight != prevHeight { changed.append("resolution") }
 
         var payload: [String: Any] = [
             "fps": newFPS,
+            "ntsc": newNTSC,
+            "fpsExact": newRate.framesPerSecond.rounded(toPlaces: 4),
+            "fpsRational": "\(newRate.rational.numerator)/\(newRate.rational.denominator)",
             "resolution": "\(newWidth)x\(newHeight)",
             "changed": changed,
         ]
@@ -116,6 +127,9 @@ extension ToolExecutor {
             payload["note"] = "Settings already matched."
         } else if changed.contains("fps") {
             payload["note"] = "Clip frames rescaled to \(newFPS)fps — re-read get_timeline before frame-based edits."
+        } else if changed.contains("ntsc") {
+            // The pulldown moves when frames land, not which frame is which: nothing is rescaled.
+            payload["note"] = "Project is now \(newRate.displayName)fps (\(newRate.rational.numerator)/\(newRate.rational.denominator)). Frame numbers are unchanged."
         }
         return .ok(Self.jsonString(payload) ?? "{}")
     }

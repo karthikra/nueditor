@@ -13,7 +13,9 @@ enum FrameRenderer {
         context: CIContext
     ) {
         let renderRect = CGRect(origin: .zero, size: instruction.renderSize)
-        let frame = Int((compositionTime.seconds * Double(instruction.fps)).rounded())
+        // Nearest frame boundary at the project's exact rate: at 23.976 a rounded 24 would drift
+        // a frame every ~42 seconds, and every layer's opacity and keyframes are sampled here.
+        let frame = Int((compositionTime.seconds * instruction.frameRate.framesPerSecond).rounded())
 
         let base = CIImage(color: .black).cropped(to: renderRect)
         let accum = composite(

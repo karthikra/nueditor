@@ -50,7 +50,7 @@ enum CompositionBuilder {
         }
         let ctx = BuildContext(
             composition: AVMutableComposition(),
-            timescale: CMTimeScale(timeline.fps),
+            frameRate: timeline.frameRate,
             renderSize: renderSize,
             resolveURL: resolveURL,
             resolveSourceSize: resolveSourceSize,
@@ -75,7 +75,7 @@ enum CompositionBuilder {
 
         // Opaque black background layer (bottommost) for full timeline
         let lastVideoEnd = ctx.trackMappings.filter(\.isVideo).map(\.endTime).max() ?? .zero
-        let desiredDuration = max(CMTime(value: CMTimeValue(timeline.totalFrames), timescale: ctx.timescale), lastVideoEnd)
+        let desiredDuration = max(ctx.frameRate.duration(frames: timeline.totalFrames), lastVideoEnd)
         if desiredDuration > .zero {
             if let mapping = try await insertBlackBackground(
                 composition: ctx.composition,
@@ -111,7 +111,8 @@ enum CompositionBuilder {
     /// Everything a build pass threads through insertion: inputs plus accumulators.
     private final class BuildContext {
         let composition: AVMutableComposition
-        let timescale: CMTimeScale
+        let frameRate: FrameRate
+        var timescale: CMTimeScale { frameRate.timescale }
         let renderSize: CGSize
         let resolveURL: @Sendable (String) -> URL?
         let resolveSourceSize: @Sendable (String) -> CGSize?
@@ -126,7 +127,7 @@ enum CompositionBuilder {
 
         init(
             composition: AVMutableComposition,
-            timescale: CMTimeScale,
+            frameRate: FrameRate,
             renderSize: CGSize,
             resolveURL: @escaping @Sendable (String) -> URL?,
             resolveSourceSize: @escaping @Sendable (String) -> CGSize?,
@@ -134,7 +135,7 @@ enum CompositionBuilder {
             missingMediaRefs: Set<String>
         ) {
             self.composition = composition
-            self.timescale = timescale
+            self.frameRate = frameRate
             self.renderSize = renderSize
             self.resolveURL = resolveURL
             self.resolveSourceSize = resolveSourceSize
@@ -175,7 +176,7 @@ enum CompositionBuilder {
             guard let track = compTrack else { continue }
             await recordSourceGeometry(for: clip, sourceTrack: source.track, ctx: ctx)
             if await insertClip(clip, sourceAsset: source.asset, sourceTrack: source.track,
-                                into: track, cursor: &cursor, timescale: ctx.timescale) {
+                                into: track, cursor: &cursor, frameRate: ctx.frameRate) {
                 if let tail = ClipDissolve.tail(into: clip, previous: inserted.last) {
                     await insertDissolveTail(tail, parentTrackIndex: parentTrackIndex, nestCarrier: nestCarrier, ctx: ctx)
                 }
@@ -233,7 +234,7 @@ enum CompositionBuilder {
             }
             guard let track = compTrack else { continue }
             if await insertClip(clip, sourceAsset: source.asset, sourceTrack: source.track,
-                                into: track, cursor: &cursor, timescale: ctx.timescale) {
+                                into: track, cursor: &cursor, frameRate: ctx.frameRate) {
                 inserted.append(clip)
                 if nest == nil, await insertDenoisedTwin(clip, parentTrackIndex: parentTrackIndex, ctx: ctx) {
                     blendedClipIds.insert(clip.id)
@@ -272,7 +273,7 @@ enum CompositionBuilder {
         await recordSourceGeometry(for: tail, sourceTrack: source.track, ctx: ctx)
         var cursor = CMTime.zero
         guard await insertClip(tail, sourceAsset: source.asset, sourceTrack: source.track,
-                               into: compTrack, cursor: &cursor, timescale: ctx.timescale) else {
+                               into: compTrack, cursor: &cursor, frameRate: ctx.frameRate) else {
             ctx.composition.removeTrack(compTrack)
             return
         }
@@ -300,7 +301,7 @@ enum CompositionBuilder {
         var cursor = CMTime.zero
         guard await insertClip(
             clip, sourceAsset: asset, sourceTrack: sourceTrack,
-            into: compTrack, cursor: &cursor, timescale: ctx.timescale
+            into: compTrack, cursor: &cursor, frameRate: ctx.frameRate
         ) else {
             ctx.composition.removeTrack(compTrack)
             return false
@@ -422,14 +423,15 @@ enum CompositionBuilder {
         sourceTrack: AVAssetTrack,
         into compTrack: AVMutableCompositionTrack,
         cursor: inout CMTime,
-        timescale: CMTimeScale
+        frameRate: FrameRate
     ) async -> Bool {
-        let clipStart = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
+        let timescale = frameRate.timescale
+        let clipStart = frameRate.time(frame: clip.startFrame)
         let trimStartFrame = clip.mediaType == .image ? max(0, clip.trimStartFrame) : clip.trimStartFrame
         let sourceTimescale = (try? await sourceTrack.load(.naturalTimeScale)) ?? timescale
-        let startSeconds = Double(trimStartFrame) / Double(timescale)
+        let startSeconds = frameRate.seconds(frame: trimStartFrame)
         let trimStart = CMTime(seconds: startSeconds, preferredTimescale: sourceTimescale)
-        let clipDuration = CMTime(value: CMTimeValue(clip.durationFrames), timescale: timescale)
+        let clipDuration = frameRate.duration(frames: clip.durationFrames)
 
         if clipStart > cursor {
             let gap = clipStart - cursor
@@ -439,7 +441,7 @@ enum CompositionBuilder {
         let sourceFrames = clip.speed == 1.0
             ? clip.durationFrames
             : max(1, Int(Double(clip.durationFrames) * clip.speed))
-        let durationSeconds = Double(sourceFrames) / Double(timescale)
+        let durationSeconds = frameRate.seconds(frame: sourceFrames)
         var sourceDuration = CMTime(seconds: durationSeconds, preferredTimescale: sourceTimescale)
         // Baked sources can be a hair shorter than the original; clamp instead of throwing.
         if let assetDuration = try? await sourceAsset.load(.duration), assetDuration.isNumeric {
@@ -543,7 +545,8 @@ enum CompositionBuilder {
         compositionDuration: CMTime,
         renderSize: CGSize
     ) -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
-        let timescale = CMTimeScale(timeline.fps)
+        let frameRate = timeline.frameRate
+        let timescale = frameRate.timescale
 
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = trackMappings.filter { !$0.isVideo }.compactMap { mapping in
@@ -561,7 +564,7 @@ enum CompositionBuilder {
                 // Prefer the live carrier so nest volume/fade edits apply on refresh.
                 let liveCarrier = parentTrack.clips.first { $0.id == carrier.id } ?? carrier
                 for clip in clips {
-                    emitVolumeEnvelope(params: params, clip: clip, timescale: timescale, carrier: liveCarrier)
+                    emitVolumeEnvelope(params: params, clip: clip, frameRate: frameRate, carrier: liveCarrier)
                 }
                 return params
             case .timeline(let trackIndex, let clipIds):
@@ -580,7 +583,7 @@ enum CompositionBuilder {
                     let gain: Float = mapping.wetAudio
                         ? strength
                         : (mapping.blendedClipIds.contains(clip.id) ? 1 - strength : 1)
-                    emitVolumeEnvelope(params: params, clip: clip, timescale: timescale, gain: gain)
+                    emitVolumeEnvelope(params: params, clip: clip, frameRate: frameRate, gain: gain)
                     prevEndFrame = clip.startFrame + clip.durationFrames
                 }
                 return params
@@ -589,7 +592,7 @@ enum CompositionBuilder {
 
         var vcConfig = AVVideoComposition.Configuration()
         vcConfig.renderSize = renderSize
-        vcConfig.frameDuration = CMTime(value: 1, timescale: timescale)
+        vcConfig.frameDuration = frameRate.frameDuration
 
         vcConfig.customVideoCompositorClass = CustomVideoCompositor.self
         vcConfig.instructions = compositorInstructions(
@@ -614,8 +617,8 @@ enum CompositionBuilder {
         compositionDuration: CMTime,
         renderSize: CGSize
     ) -> [CompositorInstruction] {
-        let timescale = CMTimeScale(timeline.fps)
-        func cmTime(_ frame: Int) -> CMTime { CMTime(value: CMTimeValue(frame), timescale: timescale) }
+        let frameRate = timeline.frameRate
+        func cmTime(_ frame: Int) -> CMTime { frameRate.time(frame: frame) }
         struct Slot { let trackID: CMPersistentTrackID; let natSize: CGSize; let transform: CGAffineTransform }
         struct Entry { let start: CMTime; let end: CMTime; let plan: LayerPlan }
 
@@ -814,7 +817,7 @@ enum CompositionBuilder {
             guard range.duration > .zero else { continue }
             let layers = active.map { entries[$0].plan }
             instructions.append(CompositorInstruction(
-                timeRange: range, layers: layers, renderSize: renderSize, fps: timeline.fps
+                timeRange: range, layers: layers, renderSize: renderSize, frameRate: frameRate
             ))
         }
         return instructions
@@ -839,7 +842,7 @@ enum CompositionBuilder {
     private static func emitVolumeEnvelope(
         params: AVMutableAudioMixInputParameters,
         clip: Clip,
-        timescale: CMTimeScale,
+        frameRate: FrameRate,
         carrier: Clip? = nil,
         gain: Float = 1
     ) {
@@ -853,8 +856,8 @@ enum CompositionBuilder {
         }
         if kfs.isEmpty && !hasFade && !carrierVaries {
             let volume = Float(clip.volumeAt(frame: clip.startFrame) * gainAt(clip.startFrame)) * gain
-            let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
-            let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
+            let start = frameRate.time(frame: clip.startFrame)
+            let end = frameRate.time(frame: clip.endFrame)
             guard volume.isFinite, end > start else { return }
             // Sub-frame silence: a word cut can leave a fragment of a removed word inside the frame
             // the audio still spans. Silence it below the frame grid at the clip's audio start/end,
@@ -915,7 +918,7 @@ enum CompositionBuilder {
         emitEnvelopeRamps(
             clip: clip,
             kfs: kfs,
-            timescale: timescale,
+            frameRate: frameRate,
             extraOffsets: extraOffsets,
             sampleAt: { Float(clip.volumeAt(frame: clip.startFrame + $0) * gainAt(clip.startFrame + $0)) * gain },
             emit: { start, end, range in
@@ -928,7 +931,7 @@ enum CompositionBuilder {
     private static func emitEnvelopeRamps(
         clip: Clip,
         kfs: [Keyframe<Double>],
-        timescale: CMTimeScale,
+        frameRate: FrameRate,
         extraOffsets: [Int] = [],
         sampleAt: (Int) -> Float,
         emit: (Float, Float, CMTimeRange) -> Void
@@ -967,8 +970,8 @@ enum CompositionBuilder {
         for i in offsets.indices.dropLast() {
             let aOff = offsets[i], bOff = offsets[i + 1]
             guard bOff > aOff else { continue }
-            let aT = CMTime(value: CMTimeValue(clip.startFrame + aOff), timescale: timescale)
-            let bT = CMTime(value: CMTimeValue(clip.startFrame + bOff), timescale: timescale)
+            let aT = frameRate.time(frame: clip.startFrame + aOff)
+            let bT = frameRate.time(frame: clip.startFrame + bOff)
             guard bT > aT else { continue }
             emit(sampleAt(aOff), sampleAt(bOff), CMTimeRange(start: aT, end: bT))
         }

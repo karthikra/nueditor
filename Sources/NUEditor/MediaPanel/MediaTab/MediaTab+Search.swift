@@ -206,7 +206,7 @@ extension MediaTab {
 
     private func previewMoment(assetID: String, atSeconds seconds: Double) {
         guard let asset = editor.mediaAssets.first(where: { $0.id == assetID }) else { return }
-        editor.selectMediaAsset(asset, atSourceFrame: secondsToFrame(seconds: seconds, fps: editor.timeline.fps))
+        editor.selectMediaAsset(asset, atSourceFrame: secondsToFrame(seconds: seconds, rate: editor.timeline.frameRate))
     }
 
     private func timecode(_ seconds: Double) -> String {

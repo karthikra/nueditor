@@ -15,7 +15,11 @@ extension ToolExecutor {
             dict["tracks"] = Self.compactTracks(tracks, editor: editor, window: window, captionDetail: captionDetail)
         }
         dict["totalFrames"] = editor.timeline.totalFrames
-        dict["durationSeconds"] = Double(editor.timeline.totalFrames) / Double(max(editor.timeline.fps, 1))
+        let rate = editor.timeline.frameRate
+        dict["durationSeconds"] = rate.seconds(frame: editor.timeline.totalFrames)
+        // fps is the count frames are numbered in; these two say what rate that actually is.
+        dict["fpsExact"] = rate.framesPerSecond.rounded(toPlaces: 4)
+        dict["fpsRational"] = "\(rate.rational.numerator)/\(rate.rational.denominator)"
         if let window {
             dict["window"] = [window.lowerBound, min(window.upperBound, editor.timeline.totalFrames)]
         }
@@ -49,7 +53,7 @@ extension ToolExecutor {
             var e: [String: Any] = ["timelineId": t.id, "name": t.name]
             if t.id == editor.activeTimelineId { e["active"] = true }
             if detailed {
-                e["durationSeconds"] = Double(t.totalFrames) / Double(max(t.fps, 1))
+                e["durationSeconds"] = t.frameRate.seconds(frame: t.totalFrames)
                 if let path = folderPathString(t.folderId, editor: editor) { e["folder"] = path }
             }
             return e
