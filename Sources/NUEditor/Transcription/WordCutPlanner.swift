@@ -10,6 +10,24 @@ enum WordCutPlanner {
         let startFrame: Int, endFrame: Int, selected: Bool
     }
 
+    /// Sub-frame silence, in source seconds, at each edge of one cut. A frame cut removes whole
+    /// frames, so a removed word whose audio ends mid-frame leaves a fragment at the splice; this
+    /// is how much to mute. Self-bounding: a removed word ends before the next kept word starts
+    /// (and starts after the previous kept word ends), so the silence never reaches kept speech.
+    struct EdgeSilence: Equatable { var leadIn: Double = 0; var leadOut: Double = 0 }
+
+    static func edgeSilence(
+        removedStartSeconds: Double,
+        removedEndSeconds: Double,
+        leftEdgeSourceSeconds: Double,
+        rightEdgeSourceSeconds: Double
+    ) -> EdgeSilence {
+        EdgeSilence(
+            leadIn: max(0, removedEndSeconds - rightEdgeSourceSeconds),
+            leadOut: max(0, leftEdgeSourceSeconds - removedStartSeconds)
+        )
+    }
+
     /// Frame ranges to remove for the selected words, gaps merged.
     ///
     /// `isSilent`, when provided (VAD), replaces the fixed keep-gap margin: each boundary

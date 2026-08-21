@@ -59,6 +59,44 @@ struct WordCutPlannerTests {
         #expect(WordCutPlanner.cutRanges(words: ws, clipStart: 0, clipEnd: 100, keepGapFrames: 6, isSilent: { $0 < 11 || $0 >= 40 })
             == [FrameRange(start: 11, end: 31)])
     }
+
+    // The removed word's audio runs 5ms past where the right clip resumes and started 20ms before
+    // the left clip ends: both fragments must be measured as sub-frame silence.
+    @Test func edgeSilenceMeasuresSubFrameFragment() {
+        let s = WordCutPlanner.edgeSilence(
+            removedStartSeconds: 0.480, removedEndSeconds: 1.005,
+            leftEdgeSourceSeconds: 0.500, rightEdgeSourceSeconds: 1.000
+        )
+        #expect(abs(s.leadIn - 0.005) < 1e-9)
+        #expect(abs(s.leadOut - 0.020) < 1e-9)
+    }
+
+    // When the splice already clears the removed word (boundary past its end / before its start),
+    // there is no fragment and nothing to silence.
+    @Test func edgeSilenceZeroWhenSpliceClearsTheWord() {
+        let s = WordCutPlanner.edgeSilence(
+            removedStartSeconds: 0.5, removedEndSeconds: 1.0,
+            leftEdgeSourceSeconds: 0.48, rightEdgeSourceSeconds: 1.02
+        )
+        #expect(s == WordCutPlanner.EdgeSilence(leadIn: 0, leadOut: 0))
+    }
+}
+
+@Suite("CaptionTranscriptMapper — timeline frame → source seconds")
+struct SourceSecondsMappingTests {
+    @Test func mapsThroughTrimStartAndSpeed() {
+        let plain = Fixtures.clip(id: "c", mediaRef: "m", mediaType: .audio, start: 0, duration: 240)
+        #expect(CaptionTranscriptMapper.sourceSeconds(ofTimelineFrame: 24, clip: plain, fps: 24) == 1.0)
+
+        let shifted = Fixtures.clip(id: "c", mediaRef: "m", mediaType: .audio, start: 10, duration: 240)
+        #expect(CaptionTranscriptMapper.sourceSeconds(ofTimelineFrame: 34, clip: shifted, fps: 24) == 1.0)
+
+        let trimmed = Fixtures.clip(id: "c", mediaRef: "m", mediaType: .audio, start: 0, duration: 240, trimStart: 48)
+        #expect(CaptionTranscriptMapper.sourceSeconds(ofTimelineFrame: 0, clip: trimmed, fps: 24) == 2.0)
+
+        let fast = Fixtures.clip(id: "c", mediaRef: "m", mediaType: .audio, start: 0, duration: 240, speed: 2)
+        #expect(CaptionTranscriptMapper.sourceSeconds(ofTimelineFrame: 12, clip: fast, fps: 24) == 1.0)
+    }
 }
 
 @Suite("remove_words — param validation")

@@ -354,6 +354,30 @@ struct CompositionBuildAudioTrackTests {
         #expect(body.end == 1)
     }
 
+    @Test func audioLeadInAndOutSilenceSubFrameEdges() async throws {
+        let audioURL = try makeSilentWav(durationSeconds: 3)
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+        var clip = Fixtures.clip(id: "a1", mediaRef: "audio", mediaType: .audio, start: 0, duration: 48)
+        clip.audioLeadInSeconds = 0.02   // sub-frame at 24fps (a frame is ~41.7ms)
+        clip.audioLeadOutSeconds = 0.02
+        let timeline = Fixtures.timeline(fps: 24, tracks: [Fixtures.audioTrack(clips: [clip])])
+        let result = try await CompositionBuilder.build(
+            timeline: timeline, resolveURL: { _ in audioURL }, renderSize: CGSize(width: 320, height: 180)
+        )
+        let params = try #require(result.audioMix.inputParameters.first)
+        // Leading 20ms is silenced (0 -> 0), below the frame grid a fade can't reach.
+        let lead = try #require(volumeRamp(params, atSeconds: 0.0))
+        #expect(lead.start == 0 && lead.end == 0)
+        #expect(abs(lead.range.end.seconds - 0.02) < 0.001)
+        // Body plays at full volume.
+        let body = try #require(volumeRamp(params, atSeconds: 1.0))
+        #expect(body.start == 1 && body.end == 1)
+        // Trailing 20ms is silenced (audio ends at 1.98s of the 2.0s clip).
+        let tail = try #require(volumeRamp(params, atSeconds: 1.99))
+        #expect(tail.start == 0 && tail.end == 0)
+        #expect(abs(tail.range.start.seconds - 1.98) < 0.001)
+    }
+
     @Test func mixedSpeedAudioClipsShareOneCompositionTrack() async throws {
         // One audio queue per composition track: retimed clips must not fan out
         // into dedicated tracks. insertClip scales each clip immediately after
@@ -434,15 +458,24 @@ struct CompositionBuildAudioTrackTests {
         atFrame frame: Int,
         fps: Int
     ) -> (start: Float, end: Float, range: CMTimeRange)? {
+        volumeRamp(params, at: CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps)))
+    }
+
+    private func volumeRamp(
+        _ params: AVAudioMixInputParameters,
+        atSeconds seconds: Double
+    ) -> (start: Float, end: Float, range: CMTimeRange)? {
+        volumeRamp(params, at: CMTime(seconds: seconds, preferredTimescale: 48_000))
+    }
+
+    private func volumeRamp(
+        _ params: AVAudioMixInputParameters,
+        at time: CMTime
+    ) -> (start: Float, end: Float, range: CMTimeRange)? {
         var start: Float = -1
         var end: Float = -1
         var range = CMTimeRange()
-        let found = params.getVolumeRamp(
-            for: CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps)),
-            startVolume: &start,
-            endVolume: &end,
-            timeRange: &range
-        )
+        let found = params.getVolumeRamp(for: time, startVolume: &start, endVolume: &end, timeRange: &range)
         return found ? (start, end, range) : nil
     }
 

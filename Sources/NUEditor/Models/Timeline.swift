@@ -147,6 +147,11 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var fadeOutFrames: Int = 0
     var fadeInInterpolation: Interpolation = .linear
     var fadeOutInterpolation: Interpolation = .linear
+    /// Sub-frame silence at the clip's audio start/end, in seconds. Lets a word cut land the audio
+    /// boundary on the exact sample instead of the frame grid, so no fragment of a removed word
+    /// survives. Video is unaffected. 0 = none.
+    var audioLeadInSeconds: Double = 0
+    var audioLeadOutSeconds: Double = 0
     var opacity: Double = 1.0
     var transform: Transform = Transform()
     var crop: Crop = Crop()
@@ -180,6 +185,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
+        case audioLeadInSeconds, audioLeadOutSeconds
         case opacity, transform, crop, edgeRounding, edgeSoftness
         case linkGroupId, captionGroupId, multicamGroupId, textContent, textStyle, textAnimation, wordTimings
         case textFillMode
@@ -458,6 +464,8 @@ extension Clip {
             fadeOutFrames: (try? c.decode(Int.self, forKey: .fadeOutFrames)) ?? 0,
             fadeInInterpolation: (try? c.decode(Interpolation.self, forKey: .fadeInInterpolation)) ?? .linear,
             fadeOutInterpolation: (try? c.decode(Interpolation.self, forKey: .fadeOutInterpolation)) ?? .linear,
+            audioLeadInSeconds: (try? c.decode(Double.self, forKey: .audioLeadInSeconds)) ?? 0,
+            audioLeadOutSeconds: (try? c.decode(Double.self, forKey: .audioLeadOutSeconds)) ?? 0,
             opacity: (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0,
             transform: (try? c.decode(Transform.self, forKey: .transform)) ?? Transform(),
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),

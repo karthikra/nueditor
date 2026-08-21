@@ -27,10 +27,15 @@ extension EditorViewModel {
         aggressiveness: CutAggressiveness,
         undoName: String
     ) -> WordCutOutcome {
-        let keepGapFrames = Int((aggressiveness.keptGapMs / 1000.0 * Double(timeline.fps)).rounded())
+        let fps = timeline.fps
+        let keepGapFrames = Int((aggressiveness.keptGapMs / 1000.0 * Double(fps)).rounded())
         var removedTexts: [String] = []
         var rangesByTrack: [Int: [FrameRange]] = [:]
         var involvedClips: [String] = []
+        // Sub-frame silence to install once the ripple has split the clips, keyed by the cut
+        // boundary (timeline frame) so it can be matched to the post-ripple fragment there.
+        var leadInByTrackRangeEnd: [Int: [Int: EdgeSilencePlan]] = [:]
+        var leadOutByTrackRangeStart: [Int: [Int: EdgeSilencePlan]] = [:]
 
         for group in transcript.groups() {
             let clipWords = group.words
@@ -56,6 +61,31 @@ extension EditorViewModel {
             guard !ranges.isEmpty else { continue }
             rangesByTrack[group.trackIndex, default: []].append(contentsOf: ranges)
             involvedClips.append(group.clipId)
+
+            // A frame cut removes whole frames; a removed word ending mid-frame leaves a fragment at
+            // the splice that a frame-quantized fade can't touch. Measure it from the raw word times.
+            if let clip {
+                for r in ranges {
+                    let removed = clipWords.filter {
+                        selected.contains($0.index) && $0.endFrame > $0.startFrame
+                            && $0.startFrame < r.end && $0.endFrame > r.start
+                    }
+                    guard let removedStart = removed.map(\.startSeconds).min(),
+                          let removedEnd = removed.map(\.endSeconds).max() else { continue }
+                    let sil = WordCutPlanner.edgeSilence(
+                        removedStartSeconds: removedStart,
+                        removedEndSeconds: removedEnd,
+                        leftEdgeSourceSeconds: CaptionTranscriptMapper.sourceSeconds(ofTimelineFrame: r.start, clip: clip, fps: fps),
+                        rightEdgeSourceSeconds: CaptionTranscriptMapper.sourceSeconds(ofTimelineFrame: r.end, clip: clip, fps: fps)
+                    )
+                    if sil.leadIn > 0 {
+                        leadInByTrackRangeEnd[group.trackIndex, default: [:]][r.end] = EdgeSilencePlan(seconds: sil.leadIn, mediaRef: clip.mediaRef)
+                    }
+                    if sil.leadOut > 0 {
+                        leadOutByTrackRangeStart[group.trackIndex, default: [:]][r.start] = EdgeSilencePlan(seconds: sil.leadOut, mediaRef: clip.mediaRef)
+                    }
+                }
+            }
         }
         guard !rangesByTrack.isEmpty else { return .empty }
 
@@ -78,15 +108,70 @@ extension EditorViewModel {
         // Only the primary track's own ranges — the ripple removes the same span from
         // linked partners, so flattening foreign-track frames would over-cut.
         let primaryRanges = rangesByTrack[primaryTrack]!
+        let leadInEnds = leadInByTrackRangeEnd[primaryTrack] ?? [:]
+        let leadOutStarts = leadOutByTrackRangeStart[primaryTrack] ?? [:]
 
-        let outcome = undo.perform(undoName) {
-            rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)
+        // Ripple and the sub-frame silence are one user intent → one undo group.
+        let outcome = undo.perform(undoName) { () -> RippleRangesOutcome in
+            let res = rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)
+            if case .ok(let report) = res, !(leadInEnds.isEmpty && leadOutStarts.isEmpty) {
+                applyEdgeSilence(
+                    report: report, primaryRanges: primaryRanges,
+                    leadInByRangeEnd: leadInEnds, leadOutByRangeStart: leadOutStarts
+                )
+            }
+            return res
         }
         switch outcome {
         case .ok(let report):
             return .ok(WordCutResult(removedFrames: report.removedFrames, removedTexts: removedTexts))
         case .refused(let reason):
             return .refused(reason)
+        }
+    }
+
+    private struct EdgeSilencePlan {
+        let seconds: Double
+        let mediaRef: String
+    }
+
+    /// After the ripple splits the clips, mute the sub-frame fragment of a removed word that
+    /// survives at each splice. The splice's post-ripple frame is the pre-cut range start minus
+    /// everything removed before it; the fragment there shares the cut clip's `mediaRef`.
+    private func applyEdgeSilence(
+        report: RippleRangesReport,
+        primaryRanges: [FrameRange],
+        leadInByRangeEnd: [Int: EdgeSilencePlan],
+        leadOutByRangeStart: [Int: EdgeSilencePlan]
+    ) {
+        let ti = report.anchorTrackIndex
+        guard timeline.tracks.indices.contains(ti) else { return }
+        let frags = report.resultingFragments
+        func mediaRef(_ clipId: String) -> String? {
+            findClip(id: clipId).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex].mediaRef }
+        }
+        var leadInByClip: [String: Double] = [:]
+        var leadOutByClip: [String: Double] = [:]
+        var removedBefore = 0
+        for r in RippleEngine.mergeRanges(primaryRanges) {
+            let splice = r.start - removedBefore
+            removedBefore += r.length
+            if let plan = leadInByRangeEnd[r.end],
+               let right = frags.first(where: { $0.startFrame == splice && mediaRef($0.clipId) == plan.mediaRef }) {
+                leadInByClip[right.clipId] = max(leadInByClip[right.clipId] ?? 0, plan.seconds)
+            }
+            if let plan = leadOutByRangeStart[r.start],
+               let left = frags.first(where: { $0.startFrame + $0.durationFrames == splice && mediaRef($0.clipId) == plan.mediaRef }) {
+                leadOutByClip[left.clipId] = max(leadOutByClip[left.clipId] ?? 0, plan.seconds)
+            }
+        }
+        guard !leadInByClip.isEmpty || !leadOutByClip.isEmpty else { return }
+        withTimelineSwap(actionName: "Trim Cut Audio") {
+            for ci in timeline.tracks[ti].clips.indices {
+                let id = timeline.tracks[ti].clips[ci].id
+                if let s = leadInByClip[id] { timeline.tracks[ti].clips[ci].audioLeadInSeconds = s }
+                if let s = leadOutByClip[id] { timeline.tracks[ti].clips[ci].audioLeadOutSeconds = s }
+            }
         }
     }
 

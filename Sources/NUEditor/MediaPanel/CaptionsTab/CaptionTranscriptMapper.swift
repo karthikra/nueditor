@@ -7,6 +7,14 @@ enum CaptionTranscriptMapper {
         return (start, start + Double(clip.durationFrames) * max(clip.speed, 0.0001))
     }
 
+    /// A timeline frame → the source-media second it plays, for this clip. The inverse of the
+    /// word→frame mapping in the transcription tool; a word cut uses it to find where a fragment
+    /// of a removed word survives past the frame-quantized splice.
+    static func sourceSeconds(ofTimelineFrame frame: Int, clip: Clip, fps: Int) -> Double {
+        let sourceFrame = sourceSpan(for: clip).start + Double(frame - clip.startFrame) * max(clip.speed, 0.0001)
+        return sourceFrame / Double(fps)
+    }
+
     static func sourceUnion(for mediaRef: String, clips: [Clip], fps: Int, paddingSeconds: Double = 1.0) -> ClosedRange<Double>? {
         let rate = Double(fps)
         let spans = clips.filter { $0.mediaRef == mediaRef }.map { sourceSpan(for: $0) }

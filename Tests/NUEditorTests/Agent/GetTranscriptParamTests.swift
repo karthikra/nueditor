@@ -47,7 +47,8 @@ struct GetTranscriptParamTests {
     @Test func wordRowsSpeakerRunsAndSegments() async throws {
         func w(_ i: Int, _ text: String, _ start: Int, _ end: Int, _ speaker: String?) -> TimelineWord {
             TimelineWord(index: i, clipId: "c1", trackIndex: 0, clipStartFrame: 0, clipEndFrame: 300,
-                         text: text, startFrame: start, endFrame: end, speaker: speaker)
+                         text: text, startFrame: start, endFrame: end,
+                         startSeconds: Double(start) / 24, endSeconds: Double(end) / 24, speaker: speaker)
         }
         let transcript = TimelineTranscript(
             context: .init(provider: .local, preferredLocale: nil),

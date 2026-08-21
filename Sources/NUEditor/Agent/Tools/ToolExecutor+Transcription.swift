@@ -14,6 +14,10 @@ struct TimelineWord {
     let text: String
     let startFrame: Int
     let endFrame: Int
+    /// Raw source-media time of this word, before frame quantization. A word cut uses these to
+    /// silence the sub-frame fragment the frame grid can't remove. Source seconds.
+    let startSeconds: Double
+    let endSeconds: Double
     let speaker: String?
 }
 
@@ -301,6 +305,8 @@ extension ToolExecutor {
                     text: row.text,
                     startFrame: row.start,
                     endFrame: row.end,
+                    startSeconds: row.startSeconds,
+                    endSeconds: row.endSeconds,
                     speaker: row.speaker.map { speakerMap[frag.clip.mediaRef]?[$0] ?? $0 }
                 ))
             }
@@ -412,15 +418,15 @@ extension ToolExecutor {
         return ranges
     }
 
-    private func timelineRows(from transcript: TranscriptionResult, clip: Clip, fps: Int) -> [(start: Int, end: Int, text: String, speaker: String?)] {
+    private func timelineRows(from transcript: TranscriptionResult, clip: Clip, fps: Int) -> [(start: Int, end: Int, text: String, startSeconds: Double, endSeconds: Double, speaker: String?)] {
         let visible = CaptionTranscriptMapper.sourceSpan(for: clip)
         let rate = Double(fps)
-        let rows = transcript.words.compactMap { word -> (start: Int, end: Int, text: String, speaker: String?)? in
+        let rows = transcript.words.compactMap { word -> (start: Int, end: Int, text: String, startSeconds: Double, endSeconds: Double, speaker: String?)? in
             guard let start = word.start, let end = word.end else { return nil }
             let midFrame = (start + end) / 2 * rate
             guard midFrame >= visible.start, midFrame < visible.end,
                   let frameSpan = Self.spanFrames(start: start, end: end, clip: clip, fps: fps) else { return nil }
-            return (frameSpan.start, frameSpan.end, word.text, word.speaker)
+            return (frameSpan.start, frameSpan.end, word.text, start, end, word.speaker)
         }
         return rows.sorted { ($0.start, $0.end) < ($1.start, $1.end) }
     }

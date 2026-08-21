@@ -801,18 +801,30 @@ enum CompositionBuilder {
             let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
             let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
             guard volume.isFinite, end > start else { return }
-            // Sample-accurate de-click: ramp the first/last few ms of every audio clip edge so a
-            // splice (a word cut, any edit) never clicks. Below the frame grid, so it works where a
-            // frame-quantized fade can't. Three contiguous ramps when the clip is long enough.
+            // Sub-frame silence: a word cut can leave a fragment of a removed word inside the frame
+            // the audio still spans. Silence it below the frame grid at the clip's audio start/end,
+            // where a frame-quantized fade can't reach. audioStart/End are the real audible bounds.
+            let lead = CMTime(seconds: max(0, clip.audioLeadInSeconds), preferredTimescale: 48_000)
+            let tail = CMTime(seconds: max(0, clip.audioLeadOutSeconds), preferredTimescale: 48_000)
+            let audioStart = CMTimeMinimum(end, CMTimeAdd(start, lead))
+            let audioEnd = CMTimeMaximum(audioStart, CMTimeSubtract(end, tail))
+            if CMTimeCompare(audioStart, start) > 0 {
+                params.setVolumeRamp(fromStartVolume: 0, toEndVolume: 0, timeRange: CMTimeRange(start: start, end: audioStart))
+            }
+            // Sample-accurate de-click: ramp the first/last few ms of the audible span so a splice
+            // (a word cut, any edit) never clicks. Three contiguous ramps when the span is long enough.
             let d = CMTime(seconds: declickSeconds, preferredTimescale: 48_000)
-            let inEnd = CMTimeMinimum(end, CMTimeAdd(start, d))
-            let outStart = CMTimeMaximum(start, CMTimeSubtract(end, d))
+            let inEnd = CMTimeMinimum(audioEnd, CMTimeAdd(audioStart, d))
+            let outStart = CMTimeMaximum(audioStart, CMTimeSubtract(audioEnd, d))
             if CMTimeCompare(inEnd, outStart) < 0 {
-                params.setVolumeRamp(fromStartVolume: 0, toEndVolume: volume, timeRange: CMTimeRange(start: start, end: inEnd))
+                params.setVolumeRamp(fromStartVolume: 0, toEndVolume: volume, timeRange: CMTimeRange(start: audioStart, end: inEnd))
                 params.setVolumeRamp(fromStartVolume: volume, toEndVolume: volume, timeRange: CMTimeRange(start: inEnd, end: outStart))
-                params.setVolumeRamp(fromStartVolume: volume, toEndVolume: 0, timeRange: CMTimeRange(start: outStart, end: end))
+                params.setVolumeRamp(fromStartVolume: volume, toEndVolume: 0, timeRange: CMTimeRange(start: outStart, end: audioEnd))
             } else {
-                params.setVolumeRamp(fromStartVolume: volume, toEndVolume: volume, timeRange: CMTimeRange(start: start, end: end))
+                params.setVolumeRamp(fromStartVolume: volume, toEndVolume: volume, timeRange: CMTimeRange(start: audioStart, end: audioEnd))
+            }
+            if CMTimeCompare(audioEnd, end) < 0 {
+                params.setVolumeRamp(fromStartVolume: 0, toEndVolume: 0, timeRange: CMTimeRange(start: audioEnd, end: end))
             }
             return
         }
