@@ -395,6 +395,7 @@ final class VideoProject: NSDocument {
     override func close() {
         // Hashing a card can run for minutes; a closed project must not keep reading its drive.
         editorViewModel.ingest.cancelAll()
+        editorViewModel.releaseProxyPins()
         super.close()
         DispatchQueue.main.async {
             if AppState.shared.activeProject === self {
@@ -412,6 +413,8 @@ final class VideoProject: NSDocument {
         }
         editorViewModel.undo.attach(undoManager)
         editorViewModel.projectURL = fileURL
+        // Proxies built in an earlier session are still on disk; pick them up for playback.
+        Task { @MainActor [editorViewModel] in await editorViewModel.hydrateProxyPlayback() }
         editorViewModel.agentService.loadSessions(from: fileURL)
         editorViewModel.agentService.onSessionsChanged = { [weak self] in
             self?.updateChangeCount(.changeDone)

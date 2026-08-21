@@ -314,6 +314,8 @@ final class EditorViewModel {
     /// Edge ingest runs behind imports; created lazily so a project that never imports footage
     /// never starts one.
     @ObservationIgnored lazy var ingest = IngestCoordinator(editor: self)
+    /// Preview proxies by asset id — playback only. See `playbackURLMap()`.
+    @ObservationIgnored var previewProxyURLs: [String: URL] = [:]
     @ObservationIgnored var onProjectCheckpointRequired: (() -> Void)?
     @ObservationIgnored var onCancelTimelineDrag: (() -> Void)?
     var isDocumentEdited: Bool = false

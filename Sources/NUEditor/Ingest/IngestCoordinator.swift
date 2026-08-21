@@ -68,6 +68,7 @@ final class IngestCoordinator {
             Log.project.info(
                 "ingest identified asset=\(assetId.prefix(8)) bytes=\(identity.fileSizeBytes) codec=\(identity.codec ?? "?")"
             )
+            await buildProxies(assetId: assetId, identity: identity, sourceURL: url)
         } catch is CancellationError {
             if let live = current(assetId: assetId), live.ingestStatus.isActive { live.ingestStatus = .queued }
         } catch {
@@ -75,6 +76,58 @@ final class IngestCoordinator {
             live.ingestStatus = .failed(Log.detail(error))
             editor.queueManifestMetadataUpdate(for: live)
             Log.project.warning("ingest identify failed asset=\(assetId.prefix(8)): \(Log.detail(error))")
+        }
+    }
+
+    /// Builds whatever proxies this footage is missing. Partial success is real success: a video
+    /// whose audio can't be extracted still gets its picture proxies, and each is installed
+    /// atomically so a cancelled build never leaves a usable-looking file.
+    private func buildProxies(assetId: String, identity: FootageIdentity, sourceURL: URL) async {
+        guard let editor, let asset = current(assetId: assetId) else { return }
+        let kinds = Self.proxyKinds(for: asset)
+        guard !kinds.isEmpty else { return }
+        asset.ingestStatus = .proxying
+
+        var built = 0
+        for kind in kinds {
+            guard !Task.isCancelled else { break }
+            if await ProxyCache.shared.existing(checksum: identity.checksum, kind: kind) != nil {
+                built += 1
+                continue
+            }
+            do {
+                let staged = try await ProxyCache.shared.stagingURL(checksum: identity.checksum, kind: kind)
+                do {
+                    try await ProxyBuilder.build(kind, from: sourceURL, to: staged)
+                    try await ProxyCache.shared.install(staged, checksum: identity.checksum, kind: kind)
+                    built += 1
+                } catch {
+                    try? FileManager.default.removeItem(at: staged)
+                    throw error
+                }
+            } catch is CancellationError {
+                break
+            } catch {
+                // A missing audio track or an unsupported codec is not an ingest failure; the
+                // other derivatives still carry the footage to the tower.
+                Log.project.warning("proxy \(kind.rawValue) failed asset=\(assetId.prefix(8)): \(Log.detail(error))")
+            }
+        }
+        await ProxyCache.shared.evictToBudget()
+
+        guard let live = current(assetId: assetId), live.url == sourceURL else { return }
+        live.ingestStatus = .local
+        editor.queueManifestMetadataUpdate(for: live)
+        Log.project.info("ingest proxies asset=\(assetId.prefix(8)) built=\(built)/\(kinds.count)")
+        await editor.hydrateProxyPlayback()
+    }
+
+    /// Audio-only footage has no picture to proxy; video gets all three.
+    static func proxyKinds(for asset: MediaAsset) -> [ProxyKind] {
+        switch asset.type {
+        case .video: asset.hasAudio ? [.preview, .vlm, .audio] : [.preview, .vlm]
+        case .audio: [.audio]
+        default: []
         }
     }
 

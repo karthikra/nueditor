@@ -289,7 +289,7 @@ final class VideoEngine {
         guard let editor, editor.activePreviewTab == .timeline else { return }
         let generation = invalidateRebuild()
 
-        let mediaURLs = editor.mediaResolver.expectedURLMap()
+        let mediaURLs = editor.playbackURLMap()   // proxies where we have them; export keeps originals
         let missingMediaRefs = editor.missingMediaRefs
         let assetSizes: [String: CGSize] = Dictionary(
             uniqueKeysWithValues: editor.mediaAssets.compactMap { asset in
