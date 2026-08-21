@@ -2,7 +2,7 @@ import Foundation
 
 extension ToolExecutor {
 
-    private static let removeWordsAllowedKeys: Set<String> = ["words", "matches", "cutAggressiveness", "language"]
+    private static let removeWordsAllowedKeys: Set<String> = ["words", "matches", "cutAggressiveness", "jumpCut", "language"]
 
     func removeWords(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.removeWordsAllowedKeys, path: "remove_words")
@@ -24,6 +24,13 @@ extension ToolExecutor {
             }
             aggressiveness = a
         } else { aggressiveness = .balanced }
+        let jumpCut: JumpCutStyle
+        if let raw = args.string("jumpCut") {
+            guard let style = JumpCutStyle(rawValue: raw) else {
+                throw ToolError("jumpCut must be one of: \(JumpCutStyle.allCases.map(\.rawValue).joined(separator: ", ")).")
+            }
+            jumpCut = style
+        } else { jumpCut = .hard }
 
         let context = try await transcriptionContext(args, path: "remove_words", preferLast: true) {
             await editor.captionCloudCreditCost(for: .init(autoDetect: true, provider: .cloud))
@@ -58,7 +65,10 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let result: EditorViewModel.WordCutResult
-        switch editor.cutSelectedWords(in: transcript, selected: selected, aggressiveness: aggressiveness, undoName: "Remove Words (Agent)") {
+        switch editor.cutSelectedWords(
+            in: transcript, selected: selected, aggressiveness: aggressiveness,
+            jumpCut: jumpCut, undoName: "Remove Words (Agent)"
+        ) {
         case .ok(let r):
             result = r
         case .empty:
@@ -73,8 +83,14 @@ extension ToolExecutor {
         var extra: [String: Any] = [
             "removedWords": removedTexts.count, "removedFrames": result.removedFrames,
             "cutAggressiveness": aggressiveness.rawValue,
+            "jumpCut": jumpCut.rawValue,
             "transcriptionSource": context.provider.rawValue,
         ]
+        if jumpCut == .soft {
+            // A boundary with no media past the out-point can't dissolve; say so rather than
+            // reporting a soft cut that isn't there.
+            extra["dissolvedJoins"] = editor.dissolvedJoinCount(atFrames: result.spliceFrames)
+        }
         let preview = removedTexts.prefix(24).joined(separator: " ")
         if !preview.isEmpty { extra["removedText"] = removedTexts.count > 24 ? preview + " …" : preview }
         if !ignored.isEmpty { extra["indicesIgnored"] = ignored.sorted() }

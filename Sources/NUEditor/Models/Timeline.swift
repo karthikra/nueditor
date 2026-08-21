@@ -152,6 +152,9 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     /// survives. Video is unaffected. 0 = none.
     var audioLeadInSeconds: Double = 0
     var audioLeadOutSeconds: Double = 0
+    /// Cross-dissolve with the abutting preceding clip in the same lane, in frames. The outgoing
+    /// clip's tail overlays this clip's head and fades out; 0 = hard cut. See `ClipDissolve`.
+    var dissolveInFrames: Int = 0
     var opacity: Double = 1.0
     var transform: Transform = Transform()
     var crop: Crop = Crop()
@@ -186,6 +189,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
         case audioLeadInSeconds, audioLeadOutSeconds
+        case dissolveInFrames
         case opacity, transform, crop, edgeRounding, edgeSoftness
         case linkGroupId, captionGroupId, multicamGroupId, textContent, textStyle, textAnimation, wordTimings
         case textFillMode
@@ -466,6 +470,7 @@ extension Clip {
             fadeOutInterpolation: (try? c.decode(Interpolation.self, forKey: .fadeOutInterpolation)) ?? .linear,
             audioLeadInSeconds: (try? c.decode(Double.self, forKey: .audioLeadInSeconds)) ?? 0,
             audioLeadOutSeconds: (try? c.decode(Double.self, forKey: .audioLeadOutSeconds)) ?? 0,
+            dissolveInFrames: max(0, (try? c.decode(Int.self, forKey: .dissolveInFrames)) ?? 0),
             opacity: (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0,
             transform: (try? c.decode(Transform.self, forKey: .transform)) ?? Transform(),
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),

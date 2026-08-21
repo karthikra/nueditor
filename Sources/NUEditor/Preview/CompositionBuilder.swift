@@ -176,6 +176,9 @@ enum CompositionBuilder {
             await recordSourceGeometry(for: clip, sourceTrack: source.track, ctx: ctx)
             if await insertClip(clip, sourceAsset: source.asset, sourceTrack: source.track,
                                 into: track, cursor: &cursor, timescale: ctx.timescale) {
+                if let tail = ClipDissolve.tail(into: clip, previous: inserted.last) {
+                    await insertDissolveTail(tail, parentTrackIndex: parentTrackIndex, nestCarrier: nestCarrier, ctx: ctx)
+                }
                 inserted.append(clip)
                 previousEndFrame = clip.endFrame
             }
@@ -247,6 +250,38 @@ enum CompositionBuilder {
         ctx.trackMappings.append(TrackMapping(
             compositionTrack: compTrack, kind: kind, naturalSize: .zero, endTime: .zero, isVideo: false,
             blendedClipIds: blendedClipIds
+        ))
+    }
+
+    /// The outgoing side of a cross-dissolve: the previous clip's tail on its own composition
+    /// track, so it can overlay the incoming clip without the lanes ever overlapping.
+    private static func insertDissolveTail(
+        _ tail: Clip,
+        parentTrackIndex: Int,
+        nestCarrier: Clip?,
+        ctx: BuildContext
+    ) async {
+        let source: (asset: AVURLAsset, track: AVAssetTrack)
+        switch (try? await loadSource(clip: tail, mediaType: .video, ctx: ctx)) {
+        case .loaded(let asset, let track): source = (asset, track)
+        default: return
+        }
+        guard let compTrack = ctx.composition.addMutableTrack(
+            withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid
+        ) else { return }
+        await recordSourceGeometry(for: tail, sourceTrack: source.track, ctx: ctx)
+        var cursor = CMTime.zero
+        guard await insertClip(tail, sourceAsset: source.asset, sourceTrack: source.track,
+                               into: compTrack, cursor: &cursor, timescale: ctx.timescale) else {
+            ctx.composition.removeTrack(compTrack)
+            return
+        }
+        let naturalSize = (try? await compTrack.load(.naturalSize))
+            .flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? ctx.renderSize
+        let kind: TrackMapping.Kind = nestCarrier.map { .nested(clips: [tail], carrier: $0, parentTrackIndex: parentTrackIndex) }
+            ?? .timeline(trackIndex: parentTrackIndex, clipIds: [tail.id])
+        ctx.trackMappings.append(TrackMapping(
+            compositionTrack: compTrack, kind: kind, naturalSize: naturalSize, endTime: cursor, isVideo: true
         ))
     }
 
@@ -617,12 +652,21 @@ enum CompositionBuilder {
             return flat
         }
 
+        /// The outgoing tail overlay for `clip`'s dissolve-in, when its twin track was inserted.
+        func dissolvePlan(into clip: Clip, previous: Clip?) -> LayerPlan? {
+            guard let tail = ClipDissolve.tail(into: clip, previous: previous),
+                  let slot = media[tail.id] else { return nil }
+            return LayerPlan(source: .track(slot.trackID), clip: tail,
+                             natSize: slot.natSize, preferredTransform: slot.transform)
+        }
+
         // Group layer for one segment window; empty children still render (nest gaps are opaque black).
         func nestGroupPlan(carrier: Clip, depth: Int, window: Range<Int>) -> LayerPlan? {
             guard let flat = flattened(for: carrier, depth: depth) else { return nil }
             var children: [LayerPlan] = []
             for childClips in flat.videoTracks.reversed() {
                 var prevEnd = Int.min
+                var prevChild: Clip?
                 for clip in childClips where clip.durationFrames > 0 {
                     let overlapsWindow = clip.startFrame < window.upperBound && clip.endFrame > window.lowerBound
                     if clip.mediaType == .text {
@@ -635,9 +679,13 @@ enum CompositionBuilder {
                         children.append(plan)
                     } else {
                         guard clip.startFrame >= prevEnd, let slot = media[clip.id] else { continue }
+                        let previous = prevChild
                         prevEnd = clip.endFrame
+                        prevChild = clip
                         guard overlapsWindow else { continue }
                         children.append(LayerPlan(source: .track(slot.trackID), clip: clip, natSize: slot.natSize, preferredTransform: slot.transform))
+                        // Directly above its incoming clip; the fade envelope gates it outside the dissolve.
+                        if let tail = dissolvePlan(into: clip, previous: previous) { children.append(tail) }
                     }
                 }
             }
@@ -665,8 +713,10 @@ enum CompositionBuilder {
         var entries: [Entry] = []
         for track in timeline.tracks.reversed() where !track.hidden {
             var prevEndFrame = Int.min
+            var prevClip: Clip?
             for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) where clip.durationFrames > 0 {
                 let plan: LayerPlan
+                let previous = prevClip
                 if clip.mediaType == .text {
                     guard !(clip.textContent ?? "").isEmpty else { continue }
                     plan = LayerPlan(source: .text, clip: clip, natSize: renderSize, preferredTransform: .identity)
@@ -689,8 +739,13 @@ enum CompositionBuilder {
                     guard clip.startFrame >= prevEndFrame, let slot = media[clip.id] else { continue }
                     plan = LayerPlan(source: .track(slot.trackID), clip: clip, natSize: slot.natSize, preferredTransform: slot.transform)
                     prevEndFrame = clip.endFrame
+                    prevClip = clip
                 }
                 entries.append(Entry(start: cmTime(clip.startFrame), end: cmTime(clip.endFrame), plan: plan))
+                // Appended after its incoming clip, so it layers directly above it.
+                if let tail = dissolvePlan(into: clip, previous: previous) {
+                    entries.append(Entry(start: cmTime(tail.clip.startFrame), end: cmTime(tail.clip.endFrame), plan: tail))
+                }
             }
         }
 

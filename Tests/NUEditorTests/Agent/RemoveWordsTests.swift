@@ -107,6 +107,13 @@ struct RemoveWordsParamTests {
         #expect((await h.runRaw("remove_words", args: ["words": [Int]()]).isError))
     }
 
+    @Test func rejectsUnknownJumpCutStyle() async {
+        let h = ToolHarness(timeline: Fixtures.timeline())
+        let result = await h.runRaw("remove_words", args: ["words": [1], "jumpCut": "dissolve"])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("jumpCut"))
+    }
+
     @Test func parsesMixedSpans() throws {
         let spans = try ToolExecutor.parseWordSpans([3, [12, 18], 40])
         #expect(spans.count == 3)

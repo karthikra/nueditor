@@ -699,6 +699,11 @@ enum ToolDefinitions {
                         "items": ["type": "string"],
                         "description": "Exact single-word tokens to remove everywhere, case-insensitive with surrounding punctuation ignored, e.g. [\"um\", \"uh\", \"hmm\"]. Mutually exclusive with words. Avoid broad words like \"like\" unless the user explicitly wants every occurrence removed.",
                     ],
+                    "jumpCut": [
+                        "type": "string",
+                        "enum": ["hard", "soft"],
+                        "description": "What to do with the picture at each join the cut creates. hard (default) leaves the cut alone. soft cross-dissolves the picture across each join where one source was cut against itself — the fix for a talking head that pops mid-sentence. Boundaries between different sources are never dissolved, and a join with no media past the out-point stays hard; the response reports dissolvedJoins so you can tell what actually happened. Audio is unaffected either way.",
+                    ],
                     "cutAggressiveness": [
                         "type": "string",
                         "enum": ["tight", "balanced", "loose"],

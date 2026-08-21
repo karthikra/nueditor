@@ -69,6 +69,16 @@ enum RippleEngine {
 
     // MARK: - Helpers
 
+    /// Where the timeline closes up once `ranges` are removed: one splice frame per merged
+    /// range, in order, each already shifted by everything removed before it.
+    static func spliceFrames(after ranges: [FrameRange]) -> [Int] {
+        var removedBefore = 0
+        return mergeRanges(ranges).map { range in
+            defer { removedBefore += range.length }
+            return range.start - removedBefore
+        }
+    }
+
     static func mergeRanges(_ ranges: [FrameRange]) -> [FrameRange] {
         let sorted = ranges.sorted { $0.start < $1.start }
         var merged: [FrameRange] = []

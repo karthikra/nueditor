@@ -20,6 +20,10 @@ struct TranscriptTab: View {
     @State private var note: String?
     @State private var reloadWork: Task<Void, Never>?
     @State private var aggressiveness: CutAggressiveness = .balanced
+    @State private var jumpCut: JumpCutStyle = .hard
+    /// Joins the last cut left that visibly pop, offered for softening rather than softened for you.
+    @State private var poppingSplices: [Int] = []
+    @State private var detectWork: Task<Void, Never>?
 
     private enum Phase: Equatable { case idle, loading, loaded, empty, failed(String) }
 
@@ -30,6 +34,7 @@ struct TranscriptTab: View {
             header
             Divider().overlay(AppTheme.Border.subtleColor)
             content
+            if !poppingSplices.isEmpty { suggestionBar }
             if !selection.isEmpty { selectionBar }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -160,6 +165,18 @@ struct TranscriptTab: View {
             .buttonStyle(.plain)
             .fixedSize()
             .help("How much breathing room to keep around a cut")
+            Menu {
+                Button("Hard cut") { jumpCut = .hard }
+                Button("Soft cut") { jumpCut = .soft }
+            } label: {
+                Text(jumpCut == .soft ? "Soft" : "Hard")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .fixedSize()
+            .help("Soft cross-dissolves the picture across each join, hiding a jump cut")
             Button("Clear") { _ = clearSelection() }
                 .buttonStyle(.plain)
                 .font(.system(size: AppTheme.FontSize.sm))
@@ -173,6 +190,35 @@ struct TranscriptTab: View {
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .padding(.vertical, AppTheme.Spacing.md)
+        .background(AppTheme.Background.raisedColor)
+        .overlay(alignment: .top) {
+            Rectangle().fill(AppTheme.Border.primaryColor).frame(height: AppTheme.BorderWidth.hairline)
+        }
+    }
+
+    private var suggestionBar: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: "wand.and.sparkles")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            Text(poppingSplices.count == 1 ? "The picture jumps at this cut." : "The picture jumps at \(poppingSplices.count) cuts.")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+            Spacer(minLength: 0)
+            Button("Dismiss") { poppingSplices = [] }
+                .buttonStyle(.plain)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            Button("Soften") {
+                editor.softenJumpCuts(atFrames: poppingSplices)
+                poppingSplices = []
+            }
+            .buttonStyle(.editorPrimary)
+            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+            .help("Cross-dissolve the picture across each join")
+        }
+        .padding(.horizontal, AppTheme.Spacing.lg)
+        .padding(.vertical, AppTheme.Spacing.sm)
         .background(AppTheme.Background.raisedColor)
         .overlay(alignment: .top) {
             Rectangle().fill(AppTheme.Border.primaryColor).frame(height: AppTheme.BorderWidth.hairline)
@@ -205,12 +251,16 @@ struct TranscriptTab: View {
     @discardableResult
     private func deleteSelection() -> Bool {
         guard let transcript, !selection.isEmpty else { return false }
-        switch editor.cutSelectedWords(in: transcript, selected: selection, aggressiveness: aggressiveness, undoName: "Delete Words") {
-        case .ok:
+        switch editor.cutSelectedWords(
+            in: transcript, selected: selection, aggressiveness: aggressiveness,
+            jumpCut: jumpCut, undoName: "Delete Words"
+        ) {
+        case .ok(let result):
             selection = []
             anchor = nil
             note = nil
             reloadTick += 1   // frames shifted — re-read the transcript
+            if jumpCut == .hard { probeJumpCuts(at: result.spliceFrames) }
         case .empty:
             note = "Nothing removable in the selection."
         case .multiTrack(let tracks):
@@ -219,6 +269,18 @@ struct TranscriptTab: View {
             note = reason
         }
         return true
+    }
+
+    /// Measure the joins a hard cut left; a pop is surfaced as a suggestion, never applied.
+    private func probeJumpCuts(at splices: [Int]) {
+        detectWork?.cancel()
+        poppingSplices = []
+        guard !splices.isEmpty else { return }
+        detectWork = Task { @MainActor in
+            let popping = await editor.detectJumpCuts(atFrames: splices)
+            guard !Task.isCancelled else { return }
+            poppingSplices = popping
+        }
     }
 
     // MARK: - Loading

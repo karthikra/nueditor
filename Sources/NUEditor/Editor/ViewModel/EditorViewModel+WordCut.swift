@@ -4,6 +4,8 @@ extension EditorViewModel {
     struct WordCutResult {
         let removedFrames: Int
         let removedTexts: [String]
+        /// Post-cut frames where the timeline closed up — the joins the cut created.
+        let spliceFrames: [Int]
     }
 
     enum WordCutOutcome {
@@ -25,6 +27,7 @@ extension EditorViewModel {
         in transcript: TimelineTranscript,
         selected: Set<Int>,
         aggressiveness: CutAggressiveness,
+        jumpCut: JumpCutStyle = .hard,
         undoName: String
     ) -> WordCutOutcome {
         let fps = timeline.fps
@@ -114,17 +117,26 @@ extension EditorViewModel {
         // Ripple and the sub-frame silence are one user intent → one undo group.
         let outcome = undo.perform(undoName) { () -> RippleRangesOutcome in
             let res = rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)
-            if case .ok(let report) = res, !(leadInEnds.isEmpty && leadOutStarts.isEmpty) {
-                applyEdgeSilence(
-                    report: report, primaryRanges: primaryRanges,
-                    leadInByRangeEnd: leadInEnds, leadOutByRangeStart: leadOutStarts
-                )
+            if case .ok(let report) = res {
+                if !(leadInEnds.isEmpty && leadOutStarts.isEmpty) {
+                    applyEdgeSilence(
+                        report: report, primaryRanges: primaryRanges,
+                        leadInByRangeEnd: leadInEnds, leadOutByRangeStart: leadOutStarts
+                    )
+                }
+                if jumpCut == .soft {
+                    softenJumpCuts(atFrames: RippleEngine.spliceFrames(after: primaryRanges))
+                }
             }
             return res
         }
         switch outcome {
         case .ok(let report):
-            return .ok(WordCutResult(removedFrames: report.removedFrames, removedTexts: removedTexts))
+            return .ok(WordCutResult(
+                removedFrames: report.removedFrames,
+                removedTexts: removedTexts,
+                spliceFrames: RippleEngine.spliceFrames(after: primaryRanges)
+            ))
         case .refused(let reason):
             return .refused(reason)
         }
@@ -152,10 +164,8 @@ extension EditorViewModel {
         }
         var leadInByClip: [String: Double] = [:]
         var leadOutByClip: [String: Double] = [:]
-        var removedBefore = 0
-        for r in RippleEngine.mergeRanges(primaryRanges) {
-            let splice = r.start - removedBefore
-            removedBefore += r.length
+        let merged = RippleEngine.mergeRanges(primaryRanges)
+        for (r, splice) in zip(merged, RippleEngine.spliceFrames(after: primaryRanges)) {
             if let plan = leadInByRangeEnd[r.end],
                let right = frags.first(where: { $0.startFrame == splice && mediaRef($0.clipId) == plan.mediaRef }) {
                 leadInByClip[right.clipId] = max(leadInByClip[right.clipId] ?? 0, plan.seconds)
