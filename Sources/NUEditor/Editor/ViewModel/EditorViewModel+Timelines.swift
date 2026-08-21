@@ -24,6 +24,7 @@ extension EditorViewModel {
         speakerRegistry = file.speakers ?? []
         multicamGroups = file.multicamGroups ?? []
         transcriptCorrections = TranscriptCorrections(file.transcriptCorrections ?? [])
+        towerProjectId = file.towerProjectId
         syncSpeakerColors()
         if !openTimelineIds.contains(activeTimelineId) {
             openTimelineIds.append(activeTimelineId)
@@ -42,7 +43,8 @@ extension EditorViewModel {
             viewStates: liveViewStates.filter { ids.contains($0.key) },
             speakers: speakerRegistry.isEmpty ? nil : speakerRegistry,
             multicamGroups: savedMulticamGroups(),
-            transcriptCorrections: transcriptCorrections.isEmpty ? nil : transcriptCorrections.all
+            transcriptCorrections: transcriptCorrections.isEmpty ? nil : transcriptCorrections.all,
+            towerProjectId: towerProjectId
         )
     }
 

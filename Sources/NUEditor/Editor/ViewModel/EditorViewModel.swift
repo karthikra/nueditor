@@ -71,6 +71,8 @@ final class EditorViewModel {
     var speakerRegistry: [SpeakerRegistryEntry] = []
     /// Fixes to misrecognised transcript words; project state, like the speaker registry.
     var transcriptCorrections = TranscriptCorrections()
+    /// The NUEDIT project this one's footage registers under, set by the tower over MCP.
+    var towerProjectId: String?
     var multicamGroups: [MulticamSource] = []
     var speakerAssignments: [String: [String: Int]] = [:]
     var speakerIdentifyPhase: String?

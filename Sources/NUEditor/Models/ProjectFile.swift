@@ -9,6 +9,9 @@ struct ProjectFile: Codable, Sendable {
     var speakers: [SpeakerRegistryEntry]?
     var multicamGroups: [MulticamSource]?
     var transcriptCorrections: [TranscriptCorrection]?
+    /// NUEDIT project this one registers footage under. Set by the tower over MCP; nil means
+    /// ingest stays local.
+    var towerProjectId: String?
 
     static func decode(_ data: Data) throws -> ProjectFile {
         let decoder = JSONDecoder()

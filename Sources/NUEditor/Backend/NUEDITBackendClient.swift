@@ -18,6 +18,9 @@ actor NUEDITBackendClient {
     /// Re-reads Settings and the address SSOT on the next call.
     func invalidateSettings() { settings = nil }
 
+    /// Pins settings explicitly instead of resolving them from Settings and the address SSOT.
+    func use(_ settings: NUEDITBackendSettings) { self.settings = settings }
+
     func currentSettings() async -> NUEDITBackendSettings {
         if let settings { return settings }
         let resolved = await NUEDITBackendSettingsStore.resolve()

@@ -120,6 +120,71 @@ final class IngestCoordinator {
         editor.queueManifestMetadataUpdate(for: live)
         Log.project.info("ingest proxies asset=\(assetId.prefix(8)) built=\(built)/\(kinds.count)")
         await editor.hydrateProxyPlayback()
+        await register(assetId: assetId, identity: identity, kinds: kinds)
+    }
+
+    /// Hands the derivatives to the tower. Never the original. An unreachable tower, an
+    /// unconfigured one, or a project with no tower link all leave the footage local and
+    /// re-registerable later — none of them is an ingest failure.
+    private func register(assetId: String, identity: FootageIdentity, kinds: [ProxyKind]) async {
+        guard let editor, let asset = current(assetId: assetId) else { return }
+        guard asset.footageId == nil else { return }
+        guard let projectId = editor.towerProjectId else { return }
+
+        var derivatives: [ProxyKind: URL] = [:]
+        for kind in kinds {
+            guard let url = await ProxyCache.shared.existing(checksum: identity.checksum, kind: kind) else { continue }
+            derivatives[kind] = url
+        }
+        guard !derivatives.isEmpty else { return }
+
+        guard let live = current(assetId: assetId) else { return }
+        live.ingestStatus = .uploading
+        let request = EdgeRegistrar.Request(
+            projectId: projectId,
+            filename: live.url.lastPathComponent,
+            durationMilliseconds: Int((live.duration * 1000).rounded()),
+            identity: identity,
+            frameRate: live.sourceFPS,
+            width: live.sourceWidth,
+            height: live.sourceHeight,
+            hasAudio: live.hasAudio,
+            derivatives: derivatives
+        )
+        let outcome = await EdgeRegistrar.register(request)
+        guard let settled = current(assetId: assetId) else { return }
+        switch outcome {
+        case .registered(let footageId, let duplicate):
+            settled.footageId = footageId
+            settled.ingestStatus = .registered(footageId)
+            Log.project.info("ingest registered asset=\(assetId.prefix(8)) footage=\(footageId) duplicate=\(duplicate)")
+        case .skipped(let reason):
+            settled.ingestStatus = .local
+            Log.project.info("ingest not registered asset=\(assetId.prefix(8)): \(reason)")
+        case .failed(let message):
+            settled.ingestStatus = .failed(message)
+            Log.project.warning("ingest register failed asset=\(assetId.prefix(8)): \(message)")
+        }
+        editor.queueManifestMetadataUpdate(for: settled)
+    }
+
+    /// Registers anything already identified and proxied that the tower has not seen — the retry
+    /// for footage imported while the tower was away, and for a project linked after the fact.
+    func registerPendingFootage() {
+        guard let editor, editor.towerProjectId != nil else { return }
+        for asset in editor.mediaAssets
+        where Self.isEligible(asset) && asset.footageId == nil && work[asset.id] == nil {
+            guard let identity = asset.footageIdentity else {
+                ingest(asset)
+                continue
+            }
+            let assetId = asset.id
+            let kinds = Self.proxyKinds(for: asset)
+            work[assetId] = Task { @MainActor [weak self] in
+                defer { self?.work[assetId] = nil }
+                await self?.register(assetId: assetId, identity: identity, kinds: kinds)
+            }
+        }
     }
 
     /// Audio-only footage has no picture to proxy; video gets all three.

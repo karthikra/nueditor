@@ -41,6 +41,9 @@ enum ToolName: String, CaseIterable, Sendable {
     case changeCam = "change_cam"
     case getMulticam = "get_multicam"
 
+    // Edge ingest
+    case towerLink = "tower_link"
+
     // Transcript
     case getTranscript = "get_transcript"
     case removeWords = "remove_words"
@@ -714,6 +717,17 @@ enum ToolDefinitions {
                         "description": "How much silence to leave between the words on either side of a cut. 'tight' butts them close (snappy, can feel clipped), 'balanced' (default) keeps a natural beat, 'loose' leaves more breathing room. The removed words' own frames always go regardless.",
                     ],
                     "language": ["type": "string", "description": "Optional BCP-47 speech language for local transcription. Omit to reuse the previous get_transcript language."],
+                ],
+                required: []
+            )
+        ),
+        AgentTool(
+            name: .towerLink,
+            description: "Read or set which NUEDIT project this editor project registers its footage under — the join key for edge ingest. NUEDIT is the caller that knows this id, so it sets it; a human normally never touches this.\n\nCall with no arguments to read the current link and the ingest state of the library (how much footage is identified, proxied, and registered). Pass projectId to link, which also registers anything already prepared but not yet sent — the retry path for footage imported while the tower was unreachable. Pass clear: true to unlink; the footage and its proxies stay, they just stop being sent.\n\nLinking does not upload originals. Only the derivatives (a 480p/5fps proxy and 16 kHz audio) ever leave this machine; the camera original stays on its drive.",
+            inputSchema: objectSchema(
+                properties: [
+                    "projectId": ["type": "string", "description": "NUEDIT project UUID to register footage under. Mutually exclusive with clear."],
+                    "clear": ["type": "boolean", "description": "Unlink this project from the tower. Footage and proxies are kept; nothing further is sent."],
                 ],
                 required: []
             )
