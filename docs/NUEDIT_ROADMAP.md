@@ -48,13 +48,19 @@ into the editor. Full design: NUEDIT repo `docs/superpowers/specs/2026-07-24-gen
 - **NUEDIT MCP server (tower):** agent-facing facade over NUEDIT's services (search, match,
   assemble, classify, generate, analyze_gaps) — so Claude/Cursor drive **both** NUEditor's MCP
   (edit) and NUEDIT's MCP (intelligence/generation).
-- **Reverse channel (Mac → tower, REST):** a Swift REST client to NUEDIT `/api/v1` (JWT) — the
-  scalable path for editor-initiated features. Spec: `docs/phase4/swift-reverse-channel.md`.
+- **Reverse channel (Mac → tower, REST):** ✅ shipped — `NUEDITBackendClient` talks to NUEDIT
+  `/api/v1`; the tower's address comes from this machine's `~/.nuhandoff/hub.toml` SSOT with a
+  Settings override. Not yet live-verified (the tower's API is not listening).
+  Spec: `docs/phase4/swift-reverse-channel.md`.
 - **Edge ingest:** NUEditor is the ingest point for raw footage — probe + checksum + local proxies,
   edit off the proxy, upload **only proxies** to the tower (raw never crosses the network), originals
   referenced in place, content-addressed relink, offline-tolerant, background. This is what feeds the
-  whole tower-intelligence stack (caption/transcript/search/A-B-roll). Tower endpoint built + tested;
-  editor side is step 3. Plan: `docs/plans/2026-08-20-edge-ingest.md`.
+  whole tower-intelligence stack (caption/transcript/search/A-B-roll). ✅ Stages 0–3 shipped:
+  backend client, content identity (SHA-256 + volume UUID), local proxies with an LRU-bounded
+  content-addressed cache and playback off them, and `edge-register` + the `tower_link` MCP tool.
+  Stages 4–5 (content-addressed relink / offline UX, S3 archive of originals) not started.
+  Registration is not live-verified until the tower's API answers.
+  Plan: `docs/plans/2026-08-20-edge-ingest.md`.
 - **Scriptmaker** panel (drives NUEDIT script/section/matching).
 - **Generation UI:** trigger video/image/music/VO + the gap-fill flow from the editor.
 - **Local LLM:** on-device MLX agent for offline/fast tasks; Bedrock for heavy reasoning.
@@ -62,7 +68,16 @@ into the editor. Full design: NUEDIT repo `docs/superpowers/specs/2026-07-24-gen
   press Delete, the media is cut and the gap closed (A/V kept in sync). Fully on-device
   (SpeechAnalyzer + Silero VAD). The cut engine already exists (`WordCutPlanner`, `remove_words`,
   ripple-delete with A/V sync); this adds the transcript-editor UI + VAD-snapped cuts + video
-  jump-cut handling. Plan: `docs/plans/2026-08-20-text-based-editing.md`.
+  jump-cut handling. ✅ All five stages shipped: transcript panel, select→Delete→cut, VAD-snapped
+  cuts with a sample-accurate de-click and sub-frame audio trim, jump-cut softening (a cross-dissolve
+  built from the outgoing clip's tail, suggested only where the picture actually pops), and the
+  polish pass — one-click filler selection and in-place word correction stored with the project.
+  Not done: B-roll "cover" over a join, which needs tower generation.
+  Plan: `docs/plans/2026-08-20-text-based-editing.md`.
+- **Fractional frame rates:** ✅ shipped — a project can hold 23.976 / 29.97 / 59.94 exactly
+  (nominal count + the 1000/1001 pulldown, stored as the rational, never the decimal). `ntsc` is
+  settable over MCP and `get_timeline` reports `fpsExact` / `fpsRational`. Drop-frame timecode is
+  not implemented.
 - In-editor B-roll review/override.
 
 ## Feature ownership (build once)
