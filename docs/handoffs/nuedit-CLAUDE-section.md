@@ -1,5 +1,10 @@
 # Proposal for the tower: add this to `nuedit/.claude/CLAUDE.md`
 
+> **Superseded (2026-08-21).** The tower already adopted a fuller **two-channel** protocol in
+> `nuedit/.claude/CLAUDE.md` ("Two channels, and what each is for" — git for the durable record,
+> nuhub for live nudges; roles `backend`/`editor`). This draft predates nuhub and is kept only for
+> history; do not apply it as-is. The live editor-side protocol is `docs/handoffs/README.md`.
+
 This is the reciprocal of the "Sibling repo: nuedit" section now in
 `nueditor/CLAUDE.md`. Applying it makes both ends of the sync protocol match.
 
@@ -13,8 +18,9 @@ This is the reciprocal of the "Sibling repo: nuedit" section now in
 ## Sibling repo: nueditor (the Mac editor) — how we stay in sync
 
 `nueditor` (`karthikra/nueditor`) is the native macOS editor — the hands and face of this product.
-It is developed by its own Claude Code session on the Mac. The two repos coordinate **through git**;
-there is no live agent channel, and none is needed.
+It is developed by its own Claude Code session on the Mac. The two repos coordinate over **two
+channels — git for the durable record, nuhub for live nudges** (roles: `backend` = you, `editor` =
+the Mac).
 
 - **Clone `nueditor` on the tower** so this session can read it (once):
   `git clone git@github.com:karthikra/nueditor.git ~/Developer/nueditor`   (NUEDITOR_CHECKOUT)
