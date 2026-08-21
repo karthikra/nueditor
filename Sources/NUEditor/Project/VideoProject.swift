@@ -393,6 +393,8 @@ final class VideoProject: NSDocument {
     // MARK: - Close
 
     override func close() {
+        // Hashing a card can run for minutes; a closed project must not keep reading its drive.
+        editorViewModel.ingest.cancelAll()
         super.close()
         DispatchQueue.main.async {
             if AppState.shared.activeProject === self {

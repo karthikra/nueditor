@@ -33,6 +33,11 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var cachedRemoteURLExpiresAt: Date?
     var generationStatus: String?
     var importInput: MediaImportInput?
+    /// Edge ingest: content identity of the camera original, how far ingest got, and the
+    /// NUEDIT footage id once the tower has accepted it.
+    var footageIdentity: FootageIdentity?
+    var ingestStatus: String?
+    var footageId: String?
 }
 
 struct MediaImportInput: Codable, Sendable, Equatable {

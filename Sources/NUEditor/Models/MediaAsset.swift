@@ -29,6 +29,11 @@ final class MediaAsset: Identifiable {
     var pendingDownloadURL: URL?
     var cachedRemoteURL: String?
     var cachedRemoteURLExpiresAt: Date?
+    /// Edge ingest state. `identity` is the content identity of the camera original; `footageId`
+    /// is the tower's id once it has accepted the derivatives.
+    var footageIdentity: FootageIdentity?
+    var ingestStatus: IngestStatus = .none
+    var footageId: String?
     private var thumbnailMaxPixelSize = 0
 
     /// Returns the cached URL if it's set AND not expired; else nil.
@@ -128,6 +133,11 @@ final class MediaAsset: Identifiable {
         self.importInput = entry.importInput
         let restoredStatus = GenerationStatus(serialized: entry.generationStatus)
         self.generationStatus = restoredStatus == .preparing && !canResumeGeneration ? .none : restoredStatus
+        self.footageIdentity = entry.footageIdentity
+        self.footageId = entry.footageId
+        // An in-flight state didn't survive the quit that interrupted it; ingest re-queues it.
+        let restoredIngest = IngestStatus(serialized: entry.ingestStatus)
+        self.ingestStatus = restoredIngest.isActive ? .queued : restoredIngest
     }
 
     /// Produce a serializable manifest entry from this asset.
@@ -149,6 +159,9 @@ final class MediaAsset: Identifiable {
             cachedRemoteURLExpiresAt: fresh == nil ? nil : cachedRemoteURLExpiresAt,
             generationStatus: generationStatus.manifestValue,
             importInput: importInput,
+            footageIdentity: footageIdentity,
+            ingestStatus: ingestStatus == .none ? nil : ingestStatus.serialized,
+            footageId: footageId,
         )
     }
 

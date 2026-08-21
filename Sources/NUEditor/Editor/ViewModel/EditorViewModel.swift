@@ -311,6 +311,9 @@ final class EditorViewModel {
 
     @ObservationIgnored let undo = EditorUndo()
     @ObservationIgnored let projectPackageCoordinator = ProjectPackageCoordinator()
+    /// Edge ingest runs behind imports; created lazily so a project that never imports footage
+    /// never starts one.
+    @ObservationIgnored lazy var ingest = IngestCoordinator(editor: self)
     @ObservationIgnored var onProjectCheckpointRequired: (() -> Void)?
     @ObservationIgnored var onCancelTimelineDrag: (() -> Void)?
     var isDocumentEdited: Bool = false

@@ -695,6 +695,7 @@ extension EditorViewModel {
         }
         refreshMissingMediaCache()
         searchIndex.schedule(asset)
+        ingest.ingest(asset)   // identity/proxies run behind the import; the clip is already editable
         if !batchManifestUpdate {
             prepareMediaVisuals(for: asset)
         }

@@ -188,8 +188,37 @@ struct AssetThumbnailView: View {
             if asset.isGenerated && !asset.isGenerating {
                 sourceBadge
             }
+            ingestBadge
         }
         .padding(AppTheme.Spacing.xs)
+    }
+
+    /// Edge ingest state. Silent while the footage is merely local — a badge for the normal case
+    /// is noise; it appears while work is running, once the tower has it, or when it failed.
+    @ViewBuilder
+    private var ingestBadge: some View {
+        switch asset.ingestStatus {
+        case .none, .local:
+            EmptyView()
+        case .queued, .identifying, .proxying, .uploading:
+            badgeCapsule(systemImage: "arrow.triangle.2.circlepath", tint: AppTheme.Text.secondaryColor)
+                .help(asset.ingestStatus.label)
+        case .registered:
+            badgeCapsule(systemImage: "checkmark.icloud", tint: AppTheme.Status.successColor)
+                .help("Registered with the tower")
+        case .failed(let message):
+            badgeCapsule(systemImage: "exclamationmark.triangle", tint: AppTheme.Status.warningColor)
+                .help("Ingest failed: \(message)")
+        }
+    }
+
+    private func badgeCapsule(systemImage: String, tint: Color) -> some View {
+        Image(systemName: systemImage)
+            .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.vertical, AppTheme.Spacing.xxs)
+            .background(Color.black.opacity(AppTheme.Opacity.prominent), in: .capsule)
     }
 
     @ViewBuilder
