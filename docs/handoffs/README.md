@@ -59,6 +59,7 @@ copy-pasting between them:
 
 | Date | Thread | Request (tower) | Reply (editor) | Status |
 |---|---|---|---|---|
+| 2026-08-21 | Own the ASR + diarization stack, drop Deepgram | `docs/phase4/2026-08-21-own-the-asr-diarization-stack-handoff.md` (editor→tower) | awaiting tower findings | ⏳ tower to reply + gate Deepgram removal on audio-only benchmark |
 | 2026-07-27 | MCP placement verification | `nuedit …/handoffs/2026-07-27-nueditor-placement-handoff.md` | `docs/phase4/2026-07-27-placement-findings.md` | ✅ answered |
 | 2026-08-01 | Reciprocal CLAUDE.md section for the tower | — | `docs/handoffs/nuedit-CLAUDE-section.md` | ⏳ tower to apply to `nuedit/.claude/CLAUDE.md` |
 | 2026-07-28 | Fill fetch: http vs https | placement handoff §5 (updated `bbdb9da`) | `docs/phase4/2026-07-28-fill-fetch-followup.md` | ⏳ awaiting tower: bytes vs Tailscale-HTTPS |
