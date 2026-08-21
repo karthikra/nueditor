@@ -72,6 +72,7 @@ copy-pasting between them:
 
 | Date | Thread | Request (tower) | Reply (editor) | Status |
 |---|---|---|---|---|
+| 2026-08-21 | Fractional fps (q1) + 23.976-in-24 playback | nuhub #10/#11 (tower→editor asks) | `docs/phase4/2026-08-21-fractional-fps-and-drift-findings.md` | ⏳ answered in git; nudge pending nuhub reachability. q1 closed (integer fps, model-level); drift = judder not desync; keep tower `97c2f7b` |
 | 2026-08-21 | Own the ASR + diarization stack, drop Deepgram | `docs/phase4/2026-08-21-own-the-asr-diarization-stack-handoff.md` (editor→tower) | awaiting tower findings | ⏳ tower to reply + gate Deepgram removal on audio-only benchmark |
 | 2026-07-27 | MCP placement verification | `nuedit …/handoffs/2026-07-27-nueditor-placement-handoff.md` | `docs/phase4/2026-07-27-placement-findings.md` | ✅ answered |
 | 2026-08-01 | Reciprocal CLAUDE.md section for the tower | — | `docs/handoffs/nuedit-CLAUDE-section.md` | ✅ superseded — tower's CLAUDE.md already has the two-channel (git + nuhub) protocol |
