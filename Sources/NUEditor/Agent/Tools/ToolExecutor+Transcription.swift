@@ -287,6 +287,7 @@ extension ToolExecutor {
 
         let registry = editor.speakerRegistry
         let assignments = editor.speakerAssignments
+        let corrections = editor.transcriptCorrections
         let speakerMap = await Self.alignedSpeakerLabels(
             fragments: fragments, transcripts: transcripts.results,
             registry: registry, assignments: assignments
@@ -302,7 +303,7 @@ extension ToolExecutor {
                     trackIndex: frag.trackIndex,
                     clipStartFrame: frag.clip.startFrame,
                     clipEndFrame: frag.clip.endFrame,
-                    text: row.text,
+                    text: corrections.text(mediaRef: frag.clip.mediaRef, startSeconds: row.startSeconds) ?? row.text,
                     startFrame: row.start,
                     endFrame: row.end,
                     startSeconds: row.startSeconds,

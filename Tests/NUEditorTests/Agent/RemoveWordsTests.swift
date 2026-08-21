@@ -107,6 +107,13 @@ struct RemoveWordsParamTests {
         #expect((await h.runRaw("remove_words", args: ["words": [Int]()]).isError))
     }
 
+    @Test func rejectsFillersCombinedWithWords() async {
+        let h = ToolHarness(timeline: Fixtures.timeline())
+        let result = await h.runRaw("remove_words", args: ["words": [1], "fillers": true])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("exactly one"))
+    }
+
     @Test func rejectsUnknownJumpCutStyle() async {
         let h = ToolHarness(timeline: Fixtures.timeline())
         let result = await h.runRaw("remove_words", args: ["words": [1], "jumpCut": "dissolve"])

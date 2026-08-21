@@ -699,6 +699,10 @@ enum ToolDefinitions {
                         "items": ["type": "string"],
                         "description": "Exact single-word tokens to remove everywhere, case-insensitive with surrounding punctuation ignored, e.g. [\"um\", \"uh\", \"hmm\"]. Mutually exclusive with words. Avoid broad words like \"like\" unless the user explicitly wants every occurrence removed.",
                     ],
+                    "fillers": [
+                        "type": "boolean",
+                        "description": "Remove every disfluency on the timeline — um, uh, er, erm, ah, hmm, mhm and their variants — in one pass. Deliberately conservative: words that are fillers only sometimes (\"like\", \"so\", \"you know\") are NOT included, so this never eats meaning; pass those as matches when the user asks for them specifically. Mutually exclusive with words and matches.",
+                    ],
                     "jumpCut": [
                         "type": "string",
                         "enum": ["hard", "soft"],

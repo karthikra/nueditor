@@ -2,20 +2,21 @@ import Foundation
 
 extension ToolExecutor {
 
-    private static let removeWordsAllowedKeys: Set<String> = ["words", "matches", "cutAggressiveness", "jumpCut", "language"]
+    private static let removeWordsAllowedKeys: Set<String> = ["words", "matches", "fillers", "cutAggressiveness", "jumpCut", "language"]
 
     func removeWords(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.removeWordsAllowedKeys, path: "remove_words")
         let rawWords = args["words"] as? [Any]
         let rawMatches = args["matches"] as? [Any]
+        let fillersOnly = args["fillers"] as? Bool ?? false
         if rawWords?.isEmpty == true || rawMatches?.isEmpty == true {
             throw ToolError("remove_words: words or matches must not be empty.")
         }
-        guard rawWords != nil || rawMatches != nil else {
-            throw ToolError("Missing 'words' or 'matches'. Pass word indices from get_transcript, e.g. [5, [12, 18]], or exact words like [\"um\", \"uh\"].")
+        guard rawWords != nil || rawMatches != nil || fillersOnly else {
+            throw ToolError("Missing 'words', 'matches', or 'fillers'. Pass word indices from get_transcript, e.g. [5, [12, 18]], exact words like [\"um\", \"uh\"], or fillers: true for every disfluency.")
         }
-        guard rawWords == nil || rawMatches == nil else {
-            throw ToolError("remove_words: pass either words or matches, not both.")
+        guard [rawWords != nil, rawMatches != nil, fillersOnly].filter({ $0 }).count == 1 else {
+            throw ToolError("remove_words: pass exactly one of words, matches, or fillers.")
         }
         let aggressiveness: CutAggressiveness
         if let raw = args.string("cutAggressiveness") {
@@ -52,6 +53,11 @@ extension ToolExecutor {
             }
             guard !selected.isEmpty else {
                 throw ToolError("None of the requested word indices are in range 0...\(maxIndex). Re-read get_transcript.")
+            }
+        } else if fillersOnly {
+            selected = Set(FillerWords.indices(in: allWords))
+            guard !selected.isEmpty else {
+                throw ToolError("No filler words on the timeline — nothing to remove.")
             }
         } else if let rawMatches {
             let matches = try Self.parseWordMatches(rawMatches)
@@ -148,10 +154,7 @@ extension ToolExecutor {
         return Set(matches)
     }
 
-    static func normalizedWordMatch(_ text: String) -> String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-            .lowercased()
-    }
+    static func normalizedWordMatch(_ text: String) -> String { FillerWords.normalized(text) }
 
     private static func intFromAny(_ v: Any) -> Int? {
         if let i = v as? Int { return i }

@@ -24,6 +24,10 @@ struct TranscriptTab: View {
     /// Joins the last cut left that visibly pop, offered for softening rather than softened for you.
     @State private var poppingSplices: [Int] = []
     @State private var detectWork: Task<Void, Never>?
+    /// Word being renamed in place, and its draft text.
+    @State private var editingIndex: Int?
+    @State private var draft = ""
+
 
     private enum Phase: Equatable { case idle, loading, loaded, empty, failed(String) }
 
@@ -44,7 +48,10 @@ struct TranscriptTab: View {
         .onChange(of: editor.timeline) { _, _ in scheduleReload() }
         .onKeyPress(.delete) { deleteSelection() ? .handled : .ignored }
         .onKeyPress(.deleteForward) { deleteSelection() ? .handled : .ignored }
-        .onKeyPress(.escape) { clearSelection() ? .handled : .ignored }
+        .onKeyPress(.escape) {
+            if editingIndex != nil { cancelCorrection(); return .handled }
+            return clearSelection() ? .handled : .ignored
+        }
     }
 
     private func scheduleReload() {
@@ -64,6 +71,13 @@ struct TranscriptTab: View {
                 .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
             Spacer(minLength: 0)
+            if !fillerIndices.isEmpty {
+                Button("Fillers (\(fillerIndices.count))") { selectFillers() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Accent.primary)
+                    .help("Select every um, uh, and hmm — review, then Delete")
+            }
             Button { reloadTick += 1 } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
@@ -119,12 +133,19 @@ struct TranscriptTab: View {
             ScrollView {
                 FlowLayout(spacing: AppTheme.Spacing.xs, lineSpacing: AppTheme.Spacing.xs) {
                     ForEach(words.indices, id: \.self) { i in
-                        WordChip(
-                            text: words[i].text,
-                            isSelected: selection.contains(i),
-                            isCurrent: i == currentIndex
-                        ) { handleTap(i) }
-                        .id(i)
+                        if editingIndex == i {
+                            WordEditor(text: $draft, commit: commitCorrection, cancel: cancelCorrection)
+                                .id(i)
+                        } else {
+                            WordChip(
+                                text: words[i].text,
+                                isSelected: selection.contains(i),
+                                isCurrent: i == currentIndex,
+                                onTap: { handleTap(i) },
+                                onEdit: { beginCorrection(i) }
+                            )
+                            .id(i)
+                        }
                     }
                 }
                 .padding(AppTheme.Spacing.lg)
@@ -238,6 +259,33 @@ struct TranscriptTab: View {
         editor.seekToFrame(words[i].startFrame, mode: .exact)
     }
 
+    private var fillerIndices: [Int] { FillerWords.indices(in: words) }
+
+    private func selectFillers() {
+        let indices = fillerIndices
+        guard !indices.isEmpty else { return }
+        selection = Set(indices)
+        anchor = indices.first
+        note = nil
+        if let first = indices.first { editor.seekToFrame(words[first].startFrame, mode: .exact) }
+    }
+
+    private func beginCorrection(_ i: Int) {
+        guard words.indices.contains(i) else { return }
+        editingIndex = i
+        draft = words[i].text
+    }
+
+    private func commitCorrection() {
+        defer { editingIndex = nil }
+        guard let i = editingIndex, words.indices.contains(i) else { return }
+        if editor.correctWord(words[i], to: draft) { reloadTick += 1 }
+    }
+
+    private func cancelCorrection() {
+        editingIndex = nil
+    }
+
     @discardableResult
     private func clearSelection() -> Bool {
         guard !selection.isEmpty else { return false }
@@ -250,7 +298,7 @@ struct TranscriptTab: View {
     /// Returns true if it consumed a delete (there was a selection to act on).
     @discardableResult
     private func deleteSelection() -> Bool {
-        guard let transcript, !selection.isEmpty else { return false }
+        guard editingIndex == nil, let transcript, !selection.isEmpty else { return false }
         switch editor.cutSelectedWords(
             in: transcript, selected: selection, aggressiveness: aggressiveness,
             jumpCut: jumpCut, undoName: "Delete Words"
@@ -320,6 +368,7 @@ private struct WordChip: View {
     let isSelected: Bool
     let isCurrent: Bool
     let onTap: () -> Void
+    let onEdit: () -> Void
 
     @State private var hovering = false
 
@@ -334,8 +383,10 @@ private struct WordChip: View {
                     .fill(background)
             )
             .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.xs))
+            .onTapGesture(count: 2, perform: onEdit)
             .onTapGesture(perform: onTap)
             .onHover { hovering = $0 }
+            .help("Double-click to fix a misheard word")
     }
 
     private var foreground: Color {
@@ -347,6 +398,43 @@ private struct WordChip: View {
         if isCurrent { return AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium) }
         if hovering { return AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.faint) }
         return .clear
+    }
+}
+
+// MARK: - Inline word correction
+
+/// Renames one word in place. Display only: the word keeps its timing.
+private struct WordEditor: View {
+    @Binding var text: String
+    let commit: () -> Void
+    let cancel: () -> Void
+
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("", text: $text)
+            .textFieldStyle(.plain)
+            .font(.system(size: AppTheme.FontSize.smMd))
+            .foregroundStyle(AppTheme.Text.primaryColor)
+            .padding(.horizontal, AppTheme.Spacing.xxs)
+            .padding(.vertical, AppTheme.Spacing.xxs)
+            .frame(minWidth: AppTheme.IconSize.xl)
+            .fixedSize()
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.xs, style: .continuous)
+                    .fill(AppTheme.Background.raisedColor)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.xs, style: .continuous)
+                            .stroke(AppTheme.Accent.primary, lineWidth: AppTheme.BorderWidth.thin)
+                    )
+            )
+            .focused($focused)
+            .onSubmit(commit)
+            .onExitCommand(perform: cancel)
+            .onAppear { focused = true }
+            .onChange(of: focused) { _, isFocused in
+                if !isFocused { commit() }
+            }
     }
 }
 

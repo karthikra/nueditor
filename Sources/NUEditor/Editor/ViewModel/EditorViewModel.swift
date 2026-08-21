@@ -69,6 +69,8 @@ final class EditorViewModel {
     var denoiseBaked: Set<String> = []
     var speechAnalyzingCount: Int = 0
     var speakerRegistry: [SpeakerRegistryEntry] = []
+    /// Fixes to misrecognised transcript words; project state, like the speaker registry.
+    var transcriptCorrections = TranscriptCorrections()
     var multicamGroups: [MulticamSource] = []
     var speakerAssignments: [String: [String: Int]] = [:]
     var speakerIdentifyPhase: String?
