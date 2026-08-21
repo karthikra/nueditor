@@ -11,6 +11,9 @@ for arg in "$@"; do
     esac
 done
 
+# Surface nuhub client/server port drift before we build (non-fatal).
+"$ROOT/scripts/nuhub-config.sh" --check || echo "dev.sh: continuing despite nuhub config drift (above)." >&2
+
 "$ROOT/scripts/bundle.sh" debug --fast
 
 if ! $stream; then
