@@ -64,7 +64,7 @@ Status: ✅ works now · 🔧 to build.
 | On-device transcription + search (siglip2) | Mac | NUEditor | ✅ (model URL still upstream — mirror pending) |
 | Login / accounts (Clerk) | — | — | ✅ removed → local-only, no login |
 | Cloud backend + cloud transcription (Convex) | — | — | ✅ removed |
-| In-app hosted agent chat | Mac | NUEditor | ✅ now runs on the user's own Anthropic key |
+| In-app hosted agent chat | Mac | NUEditor | ✅ runs on Claude via Amazon Bedrock (AWS CLI credentials, SigV4; default ap-northeast-1) |
 | Closed generation (Seedance/Kling via Convex) | — | — | ✅ removed → NUEDIT owns (Phase 3) |
 | Telemetry (Sentry/PostHog), auto-update (Sparkle) | — | — | ✅ removed → no external calls |
 | **NUEDIT → NUEditor MCP client** (push assembly) | Tower | NUEDIT | 🔧 Phase 2 |

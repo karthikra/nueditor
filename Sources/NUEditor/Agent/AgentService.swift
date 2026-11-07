@@ -5,49 +5,69 @@ import Observation
 @MainActor
 final class AgentService {
 
-    private var apiKey: String = ""
-    private var apiKeyObserver: NSObjectProtocol?
+    enum Connection: Equatable {
+        case checking
+        case ready
+        case unavailable(String)
+    }
+
+    private(set) var connection: Connection = .checking
+    private(set) var bedrockSettings = BedrockSettings.load()
+    private var settingsObserver: NSObjectProtocol?
+    private var connectionCheck: Task<Void, Never>?
 
     init() {
-        reloadAPIKey()
-        apiKeyObserver = NotificationCenter.default.addObserver(
-            forName: .anthropicAPIKeyChanged,
+        refreshConnection()
+        settingsObserver = NotificationCenter.default.addObserver(
+            forName: .bedrockSettingsChanged,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.reloadAPIKey()
+                self?.refreshConnection()
             }
         }
     }
 
-    private func reloadAPIKey() {
-        Task { [weak self] in
-            let key = await Task.detached(priority: .utility) {
-                AnthropicKeychain.load() ?? ""
-            }.value
-            self?.apiKey = key
+    /// Resolves credentials for the current settings; the latest settings always win.
+    func refreshConnection() {
+        let settings = BedrockSettings.load()
+        bedrockSettings = settings
+        connection = .checking
+        connectionCheck?.cancel()
+        connectionCheck = Task { [weak self] in
+            let result = await Self.connection(for: settings)
+            guard !Task.isCancelled, let self, self.bedrockSettings == settings else { return }
+            self.connection = result
+        }
+    }
+
+    /// Ready when the AWS CLI chain yields credentials for `settings.profile`.
+    nonisolated static func connection(for settings: BedrockSettings) async -> Connection {
+        do {
+            _ = try await AWSCredentialProvider.shared.credentials(profile: settings.profile)
+            return .ready
+        } catch {
+            return .unavailable(error.localizedDescription)
         }
     }
 
     isolated deinit {
-        if let token = apiKeyObserver {
+        connectionCheck?.cancel()
+        if let token = settingsObserver {
             NotificationCenter.default.removeObserver(token)
         }
     }
 
-    var hasApiKey: Bool { !apiKey.isEmpty }
+    var isConnected: Bool { connection == .ready }
 
-    var canStream: Bool { hasApiKey }
+    var canStream: Bool { isConnected }
 
-    var availableModels: [AnthropicModel] {
-        if hasApiKey { return AnthropicModel.allCases }
-        return [.sonnet5]
-    }
+    var availableModels: [AnthropicModel] { AnthropicModel.allCases }
 
     private func selectClient() -> (any AgentClient)? {
-        guard hasApiKey else { return nil }
-        return AnthropicClient(apiKey: apiKey, model: effectiveModel)
+        guard isConnected else { return nil }
+        return BedrockClient(settings: bedrockSettings, model: effectiveModel)
     }
 
     var effectiveModel: AnthropicModel {
@@ -290,7 +310,7 @@ final class AgentService {
 
     func send(text: String, mentions: [AgentMention]) {
         guard canStream else {
-            streamError = AgentStreamError(message: "Add an Anthropic API key in Settings to start.")
+            streamError = AgentStreamError(message: "Connect Amazon Bedrock in Settings to start.")
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

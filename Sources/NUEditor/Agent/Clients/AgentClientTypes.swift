@@ -15,6 +15,15 @@ enum AnthropicModel: String, CaseIterable, Sendable {
         }
     }
 
+    /// Global cross-region inference profile; the raw value stays the persisted selection.
+    var bedrockModelID: String {
+        switch self {
+        case .sonnet5: "global.anthropic.claude-sonnet-5"
+        case .opus48: "global.anthropic.claude-opus-4-8"
+        case .haiku45: "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+        }
+    }
+
     var requestExtras: [String: Any] {
         switch self {
         case .sonnet5: ["output_config": ["effort": "low"]]
@@ -45,22 +54,22 @@ struct AnthropicToolSchema: @unchecked Sendable {
     let inputSchema: [String: Any]
 }
 
-enum AnthropicStreamEvent: Sendable {
+enum AnthropicStreamEvent: Sendable, Equatable {
     case textDelta(String)
     case toolUseComplete(id: String, name: String, inputJSON: String)
     case messageStop(stopReason: AnthropicStopReason)
 }
 
-enum AnthropicClientError: LocalizedError {
-    case missingAPIKey
-    case httpError(status: Int, body: String)
+enum AgentClientError: LocalizedError, Equatable {
+    case notConnected(String)
+    case httpError(status: Int, message: String)
     case streamError(String)
 
     var errorDescription: String? {
         switch self {
-        case .missingAPIKey: "No Anthropic API key is set."
-        case .httpError(let status, let body): "Anthropic API error (\(status)): \(body.prefix(500))"
-        case .streamError(let msg): "Stream error: \(msg)"
+        case .notConnected(let message): "Bedrock is not connected: \(message)"
+        case .httpError(let status, let message): "Bedrock error (\(status)): \(message)"
+        case .streamError(let message): "Stream error: \(message)"
         }
     }
 }
@@ -97,71 +106,60 @@ enum AgentUsageLog {
     }
 }
 
-// MARK: - Shared SSE parser
+// MARK: - Stream event parser
 
-enum AnthropicSSE {
-    static func parse(
-        bytes: URLSession.AsyncBytes,
-        continuation: AsyncThrowingStream<AnthropicStreamEvent, Error>.Continuation
-    ) async throws {
-        var pendingTools: [Int: (id: String, name: String, json: String)] = [:]
-        for try await line in bytes.lines {
-            try Task.checkCancellation()
-            guard line.hasPrefix("data:"),
-                  let data = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces).data(using: .utf8),
-                  let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let type = event["type"] as? String else { continue }
+/// Turns Anthropic Messages stream events into agent events, assembling tool input across deltas.
+struct AnthropicStreamParser {
+    private var pendingTools: [Int: (id: String, name: String, json: String)] = [:]
 
-            switch type {
-            case "message_start":
-                if let message = event["message"] as? [String: Any],
-                   let usage = message["usage"] as? [String: Any] {
-                    AgentUsageLog.record(usage)
-                }
-
-            case "content_block_start":
-                if let index = event["index"] as? Int,
-                   let block = event["content_block"] as? [String: Any],
-                   block["type"] as? String == "tool_use",
-                   let id = block["id"] as? String,
-                   let name = block["name"] as? String {
-                    pendingTools[index] = (id, name, "")
-                }
-
-            case "content_block_delta":
-                guard let index = event["index"] as? Int,
-                      let delta = event["delta"] as? [String: Any],
-                      let deltaType = delta["type"] as? String else { break }
-                if deltaType == "text_delta", let text = delta["text"] as? String, !text.isEmpty {
-                    continuation.yield(.textDelta(text))
-                } else if deltaType == "input_json_delta",
-                          let partial = delta["partial_json"] as? String,
-                          var acc = pendingTools[index] {
-                    acc.json += partial
-                    pendingTools[index] = acc
-                }
-
-            case "content_block_stop":
-                if let index = event["index"] as? Int, let acc = pendingTools.removeValue(forKey: index) {
-                    let json = acc.json.isEmpty ? "{}" : acc.json
-                    continuation.yield(.toolUseComplete(id: acc.id, name: acc.name, inputJSON: json))
-                }
-
-            case "message_delta":
-                if let delta = event["delta"] as? [String: Any],
-                   let raw = delta["stop_reason"] as? String {
-                    continuation.yield(.messageStop(stopReason: AnthropicStopReason(rawValue: raw) ?? .other))
-                }
-
-            case "error":
-                if let err = event["error"] as? [String: Any],
-                   let msg = err["message"] as? String {
-                    continuation.finish(throwing: AnthropicClientError.streamError(msg))
-                }
-
-            default: break
+    mutating func consume(_ event: [String: Any]) throws -> [AnthropicStreamEvent] {
+        guard let type = event["type"] as? String else { return [] }
+        switch type {
+        case "message_start":
+            if let message = event["message"] as? [String: Any],
+               let usage = message["usage"] as? [String: Any] {
+                AgentUsageLog.record(usage)
             }
+
+        case "content_block_start":
+            if let index = event["index"] as? Int,
+               let block = event["content_block"] as? [String: Any],
+               block["type"] as? String == "tool_use",
+               let id = block["id"] as? String,
+               let name = block["name"] as? String {
+                pendingTools[index] = (id, name, "")
+            }
+
+        case "content_block_delta":
+            guard let index = event["index"] as? Int,
+                  let delta = event["delta"] as? [String: Any],
+                  let deltaType = delta["type"] as? String else { break }
+            if deltaType == "text_delta", let text = delta["text"] as? String, !text.isEmpty {
+                return [.textDelta(text)]
+            }
+            if deltaType == "input_json_delta", let partial = delta["partial_json"] as? String,
+               var accumulated = pendingTools[index] {
+                accumulated.json += partial
+                pendingTools[index] = accumulated
+            }
+
+        case "content_block_stop":
+            if let index = event["index"] as? Int, let tool = pendingTools.removeValue(forKey: index) {
+                return [.toolUseComplete(id: tool.id, name: tool.name, inputJSON: tool.json.isEmpty ? "{}" : tool.json)]
+            }
+
+        case "message_delta":
+            if let delta = event["delta"] as? [String: Any], let raw = delta["stop_reason"] as? String {
+                return [.messageStop(stopReason: AnthropicStopReason(rawValue: raw) ?? .other)]
+            }
+
+        case "error":
+            let message = (event["error"] as? [String: Any])?["message"] as? String ?? "Unknown stream error."
+            throw AgentClientError.streamError(message)
+
+        default: break
         }
+        return []
     }
 }
 
@@ -195,10 +193,10 @@ enum AnthropicRequestBody {
             lastMsg["content"] = content
             messageBlocks.append(lastMsg)
         }
+        // Bedrock takes the model in the URL and streams by endpoint, so neither is in the body.
         var body: [String: Any] = [
-            "model": model.rawValue,
+            "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": maxTokens,
-            "stream": true,
             "system": [["type": "text", "text": system, "cache_control": ["type": "ephemeral"]]],
             "messages": messageBlocks,
         ]

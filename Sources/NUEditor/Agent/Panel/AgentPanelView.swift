@@ -138,7 +138,7 @@ struct AgentPanelView: View {
 
     @ViewBuilder
     private var modelPicker: some View {
-        if service.hasApiKey {
+        if service.isConnected {
             Menu {
                 ForEach(service.availableModels, id: \.self) { m in
                     Button(m.displayName) { service.model = m }
@@ -160,12 +160,12 @@ struct AgentPanelView: View {
     }
 
     @ViewBuilder
-    private var byokIndicator: some View {
-        if service.hasApiKey {
-            Text("using API key")
+    private var bedrockIndicator: some View {
+        if service.isConnected {
+            Text("via Bedrock")
                 .font(.system(size: AppTheme.FontSize.xs).italic())
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .help("Streaming through your Anthropic API key (BYOK)")
+                .help("Streaming through Amazon Bedrock in \(service.bedrockSettings.region)")
         }
     }
 
@@ -288,14 +288,23 @@ struct AgentPanelView: View {
     private var missingKeyState: some View {
         VStack(spacing: AppTheme.Spacing.mdLg) {
             Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Label("Add an Anthropic API key", systemImage: "key.fill")
+                Label("Connect Amazon Bedrock", systemImage: "key.fill")
                     .font(.system(size: AppTheme.FontSize.mdLg, weight: .semibold))
             }
             .buttonStyle(.capsule(.prominent, size: .regular))
 
-            Text("The agent runs against your own key.")
+            Text(connectionDetail)
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.mutedColor)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private var connectionDetail: String {
+        switch service.connection {
+        case .checking: String(localized: "Checking AWS credentials…")
+        case .ready: String(localized: "The agent runs on Claude through your AWS account.")
+        case .unavailable(let reason): reason
         }
     }
 
@@ -326,7 +335,7 @@ struct AgentPanelView: View {
                 onCancel: { service.cancel() }
             ) {
                 modelPicker
-                byokIndicator
+                bedrockIndicator
             }
         }
         .padding(.horizontal, AppTheme.Spacing.mdLg)
