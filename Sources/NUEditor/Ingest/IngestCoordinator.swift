@@ -12,6 +12,11 @@ final class IngestCoordinator {
     /// Hashing is disk-bound and a card import can be hundreds of files; two at a time keeps the
     /// drive busy without starving playback reads.
     private let gate = AsyncSemaphore(value: 2)
+    /// Archiving is uplink-bound and runs for hours; it has its own gate so it never holds `gate`.
+    private var archiveWork: [String: Task<Void, Never>] = [:]
+    private let archiveGate = AsyncSemaphore(value: 1)
+    /// Last archive result per asset this session — what `tower_link` reports.
+    private(set) var archiveOutcomes: [String: OriginalArchiver.Outcome] = [:]
 
     init(editor: EditorViewModel) {
         self.editor = editor
@@ -38,12 +43,15 @@ final class IngestCoordinator {
 
     func cancel(assetId: String) {
         work.removeValue(forKey: assetId)?.cancel()
+        archiveWork.removeValue(forKey: assetId)?.cancel()
     }
 
     /// Quit, close, or project switch: stop hashing, leave no half state behind.
     func cancelAll() {
         for task in work.values { task.cancel() }
         work.removeAll()
+        for task in archiveWork.values { task.cancel() }
+        archiveWork.removeAll()
     }
 
     private func identify(assetId: String) async {
@@ -158,6 +166,9 @@ final class IngestCoordinator {
             settled.footageId = footageId
             settled.ingestStatus = .registered(footageId)
             Log.project.info("ingest registered asset=\(assetId.prefix(8)) footage=\(footageId) duplicate=\(duplicate)")
+            editor.queueManifestMetadataUpdate(for: settled)
+            archiveOriginal(assetId: assetId)
+            return
         case .skipped(let reason):
             settled.ingestStatus = .local
             Log.project.info("ingest not registered asset=\(assetId.prefix(8)): \(reason)")
@@ -170,8 +181,10 @@ final class IngestCoordinator {
 
     /// Registers anything already identified and proxied that the tower has not seen — the retry
     /// for footage imported while the tower was away, and for a project linked after the fact.
+    /// Registered footage whose original isn't archived yet is queued for archiving.
     func registerPendingFootage() {
         guard let editor, editor.towerProjectId != nil else { return }
+        for asset in editor.mediaAssets where asset.footageId != nil { archiveOriginal(assetId: asset.id) }
         for asset in editor.mediaAssets
         where Self.isEligible(asset) && asset.footageId == nil && work[asset.id] == nil {
             guard let identity = asset.footageIdentity else {
@@ -184,6 +197,47 @@ final class IngestCoordinator {
                 defer { self?.work[assetId] = nil }
                 await self?.register(assetId: assetId, identity: identity, kinds: kinds)
             }
+        }
+    }
+
+    /// Queues the camera original for the S3 archive. Idempotent: archived, in-flight,
+    /// unregistered, or unidentified footage is left alone.
+    func archiveOriginal(assetId: String) {
+        guard archiveWork[assetId] == nil, let asset = current(assetId: assetId), Self.isEligible(asset),
+              asset.originalArchiveURI == nil, archiveOutcomes[assetId] != .alreadyArchived,
+              let footageId = asset.footageId, let identity = asset.footageIdentity else { return }
+        let url = asset.url
+        archiveWork[assetId] = Task { @MainActor [weak self] in
+            defer { self?.archiveWork[assetId] = nil }
+            await self?.archive(assetId: assetId, footageId: footageId, identity: identity, originalURL: url)
+        }
+    }
+
+    func isArchiving(assetId: String) -> Bool { archiveWork[assetId] != nil }
+
+    private func archive(assetId: String, footageId: String, identity: FootageIdentity, originalURL: URL) async {
+        guard (try? await archiveGate.wait()) != nil else { return }
+        defer { Task { await archiveGate.signal() } }
+        guard !Task.isCancelled, let live = current(assetId: assetId), live.url == originalURL,
+              live.footageId == footageId, live.originalArchiveURI == nil else { return }
+
+        let outcome = await OriginalArchiver.archive(
+            OriginalArchiver.Request(footageId: footageId, originalURL: originalURL, identity: identity)
+        )
+        archiveOutcomes[assetId] = outcome
+        guard let editor, let settled = current(assetId: assetId), settled.url == originalURL,
+              settled.footageId == footageId else { return }
+        switch outcome {
+        case .archived(let uri):
+            settled.originalArchiveURI = uri
+            editor.queueManifestMetadataUpdate(for: settled)
+            Log.project.info("archive stored asset=\(assetId.prefix(8)) footage=\(footageId)")
+        case .alreadyArchived:
+            Log.project.info("archive already held asset=\(assetId.prefix(8)) footage=\(footageId)")
+        case .skipped(let reason):
+            Log.project.info("archive skipped asset=\(assetId.prefix(8)): \(reason)")
+        case .failed(let message):
+            Log.project.warning("archive failed asset=\(assetId.prefix(8)) footage=\(footageId): \(message)")
         }
     }
 

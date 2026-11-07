@@ -19,7 +19,7 @@ enum FootageProbe {
 
     @concurrent
     static func identity(of url: URL) async throws -> FootageIdentity {
-        let size = try fileSize(of: url)
+        let (size, modified) = try fileSizeAndModificationDate(of: url)
         let checksum = try await checksum(of: url)
         let volume = volumeIdentity(of: url)
         return FootageIdentity(
@@ -29,8 +29,17 @@ enum FootageProbe {
             volumeUUID: volume.uuid,
             volumeLabel: volume.label,
             volumeRelativePath: volume.relativePath,
-            mountPoint: volume.mountPoint
+            mountPoint: volume.mountPoint,
+            contentModificationDate: modified
         )
+    }
+
+    static func fileSizeAndModificationDate(of url: URL) throws -> (Int, Date?) {
+        let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        guard let size = values.fileSize else {
+            throw BackendError.transport("Could not read the size of \(url.lastPathComponent).")
+        }
+        return (size, values.contentModificationDate)
     }
 
     /// Streamed SHA-256 of the whole file, lowercase hex.
@@ -48,11 +57,7 @@ enum FootageProbe {
     }
 
     static func fileSize(of url: URL) throws -> Int {
-        let values = try url.resourceValues(forKeys: [.fileSizeKey])
-        guard let size = values.fileSize else {
-            throw BackendError.transport("Could not read the size of \(url.lastPathComponent).")
-        }
-        return size
+        try fileSizeAndModificationDate(of: url).0
     }
 
     /// The drive, not the mount point: an external volume comes back at a different path, so the

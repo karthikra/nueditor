@@ -17,6 +17,15 @@ struct FootageIdentity: Codable, Sendable, Equatable {
     var volumeRelativePath: String?
     /// Where the volume was last seen. Advisory: helpful in a "mount this drive" message, never a key.
     var mountPoint: String?
+    /// Read before hashing; a later mismatch means the bytes may no longer match `checksum`.
+    var contentModificationDate: Date?
+
+    /// True when the file on disk still looks like the one that was hashed.
+    func matches(fileSizeBytes size: Int, contentModificationDate date: Date?) -> Bool {
+        guard size == fileSizeBytes else { return false }
+        guard let recorded = contentModificationDate, let date else { return true }
+        return abs(recorded.timeIntervalSince(date)) < 0.001
+    }
 }
 
 /// How far a piece of footage has got through ingest. Mirrors `MediaAsset.GenerationStatus`:

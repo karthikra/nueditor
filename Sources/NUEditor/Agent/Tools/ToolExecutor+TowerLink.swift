@@ -33,6 +33,7 @@ extension ToolExecutor {
             "changed": changed,
             "backendConfigured": backend.isConfigured,
             "footage": ingestSummary(editor),
+            "originals": archiveSummary(editor),
         ]
         if let id = editor.towerProjectId { payload["projectId"] = id }
         if let baseURL = backend.baseURL { payload["backendURL"] = baseURL.absoluteString }
@@ -42,6 +43,41 @@ extension ToolExecutor {
             payload["note"] = "Linked, but no tower address is configured on this Mac, so nothing can be sent yet."
         }
         return .ok(Self.jsonString(payload) ?? "{}")
+    }
+
+    /// Whether each registered camera original has a verified copy in the tower's S3 archive.
+    private func archiveSummary(_ editor: EditorViewModel) -> [String: Any] {
+        var archived = 0, inFlight = 0, failed = 0, waiting = 0
+        var issues: [[String: Any]] = []
+        let outcomes = editor.ingest.archiveOutcomes
+        for asset in editor.mediaAssets where IngestCoordinator.isEligible(asset) && asset.footageId != nil {
+            let outcome = outcomes[asset.id]
+            if editor.ingest.isArchiving(assetId: asset.id) {
+                inFlight += 1
+                continue
+            }
+            if asset.originalArchiveURI != nil || outcome == .alreadyArchived {
+                archived += 1
+                continue
+            }
+            switch outcome {
+            case .failed(let reason):
+                failed += 1
+                issues.append(["assetId": asset.id, "name": asset.name, "state": "failed", "reason": reason])
+            case .skipped(let reason):
+                waiting += 1
+                issues.append(["assetId": asset.id, "name": asset.name, "state": "waiting", "reason": reason])
+            case .archived, .alreadyArchived, nil:
+                waiting += 1
+            }
+        }
+        return [
+            "archived": archived,
+            "inFlight": inFlight,
+            "waiting": waiting,
+            "failed": failed,
+            "issues": issues,
+        ]
     }
 
     /// How far the library has got through ingest — the honest counterpart to a bare "linked: true".

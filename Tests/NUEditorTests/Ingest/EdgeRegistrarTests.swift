@@ -163,4 +163,22 @@ struct TowerLinkTests {
         #expect(footage?["identified"] as? Int == 1)
         #expect(footage?["registered"] as? Int == 0)
     }
+
+    // "Registered" is not "safe": the receipt says separately whether each original has a copy.
+    @Test func reportsWhetherOriginalsAreArchived() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline())
+        for (name, uri) in [("A001", "s3://nuedit-media/p/f-a/A001.mov"), ("A002", nil)] {
+            let asset = MediaAsset(url: URL(fileURLWithPath: "/Volumes/CARD/\(name).mov"), type: .video, name: name)
+            asset.footageIdentity = FootageIdentity(checksum: name, fileSizeBytes: 10)
+            asset.footageId = "f-\(name)"
+            asset.originalArchiveURI = uri
+            h.editor.mediaAssets.append(asset)
+        }
+
+        let payload = try await h.runOK("tower_link") as? [String: Any]
+        let originals = payload?["originals"] as? [String: Any]
+        #expect(originals?["archived"] as? Int == 1)
+        #expect(originals?["waiting"] as? Int == 1)
+        #expect(originals?["failed"] as? Int == 0)
+    }
 }

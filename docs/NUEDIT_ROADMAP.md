@@ -58,7 +58,11 @@ into the editor. Full design: NUEDIT repo `docs/superpowers/specs/2026-07-24-gen
   whole tower-intelligence stack (caption/transcript/search/A-B-roll). ✅ Stages 0–3 shipped:
   backend client, content identity (SHA-256 + volume UUID), local proxies with an LRU-bounded
   content-addressed cache and playback off them, and `edge-register` + the `tower_link` MCP tool.
-  Stages 4–5 (content-addressed relink / offline UX, S3 archive of originals) not started.
+  Stage 5 (S3 archive of originals) built on this side for originals up to 5 GB: the Mac uploads
+  straight to S3 on a tower-signed URL, one file at a time, refuses a file changed since it was
+  hashed, and always calls `complete` so a failed upload stays retryable. Larger files wait on the
+  tower's multipart flow — see `docs/phase4/2026-11-07-archive-originals-handoff.md`. Stage 4
+  (content-addressed relink / offline UX) not started.
   Registration is not live-verified until the tower's API answers.
   Plan: `docs/plans/2026-08-20-edge-ingest.md`.
 - **Scriptmaker** panel (drives NUEDIT script/section/matching).

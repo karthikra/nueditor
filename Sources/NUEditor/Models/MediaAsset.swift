@@ -34,6 +34,8 @@ final class MediaAsset: Identifiable {
     var footageIdentity: FootageIdentity?
     var ingestStatus: IngestStatus = .none
     var footageId: String?
+    /// `s3://` location of the archived camera original, once the tower has verified it.
+    var originalArchiveURI: String?
     private var thumbnailMaxPixelSize = 0
 
     /// Returns the cached URL if it's set AND not expired; else nil.
@@ -135,6 +137,7 @@ final class MediaAsset: Identifiable {
         self.generationStatus = restoredStatus == .preparing && !canResumeGeneration ? .none : restoredStatus
         self.footageIdentity = entry.footageIdentity
         self.footageId = entry.footageId
+        self.originalArchiveURI = entry.originalArchiveURI
         // An in-flight state didn't survive the quit that interrupted it; ingest re-queues it.
         let restoredIngest = IngestStatus(serialized: entry.ingestStatus)
         self.ingestStatus = restoredIngest.isActive ? .queued : restoredIngest
@@ -162,6 +165,7 @@ final class MediaAsset: Identifiable {
             footageIdentity: footageIdentity,
             ingestStatus: ingestStatus == .none ? nil : ingestStatus.serialized,
             footageId: footageId,
+            originalArchiveURI: originalArchiveURI,
         )
     }
 

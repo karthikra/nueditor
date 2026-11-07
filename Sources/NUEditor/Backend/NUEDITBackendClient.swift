@@ -154,6 +154,95 @@ actor NUEDITBackendClient {
         return try decode(FootageStatus.self, from: data)
     }
 
+    // MARK: - Archive (camera originals → S3)
+
+    enum ArchiveGrant: Sendable, Equatable {
+        /// PUT the original to `url` sending exactly `headers`: the signature covers them.
+        case upload(key: String, url: URL, headers: [String: String])
+        /// The tower declined: already archived, opted out, or no checksum on record.
+        case skipped(reason: String, archiveStatus: String?)
+    }
+
+    /// The header the tower's signer bakes in when its response doesn't list any.
+    static let defaultArchiveHeaders = ["Content-Type": "application/octet-stream"]
+
+    private struct ArchivePresignBody: Decodable {
+        let key: String?
+        let url: String?
+        let headers: [String: String]?
+        let skipped: Bool?
+        let reason: String?
+        let archive_status: String?
+    }
+
+    /// Moves the tower's row to `uploading`; every grant must be followed by `completeArchive`.
+    func presignArchive(footageId: String, expiresIn: Int) async throws -> ArchiveGrant {
+        let request = try await request(
+            path: "/api/v1/footage/\(footageId)/archive/presign?expires_in=\(expiresIn)", method: "POST"
+        )
+        let (data, response) = try await data(for: request)
+        try Self.validate(response: response, data: data)
+        let body = try decode(ArchivePresignBody.self, from: data)
+        if body.skipped == true {
+            return .skipped(reason: body.reason ?? "skipped", archiveStatus: body.archive_status)
+        }
+        guard let key = body.key, let text = body.url, let url = URL(string: text) else {
+            throw BackendError.transport("The tower's archive grant has no upload URL.")
+        }
+        return .upload(key: key, url: url, headers: body.headers ?? Self.defaultArchiveHeaders)
+    }
+
+    enum ArchiveCompletion: Sendable, Equatable {
+        case archived(uri: String)
+        case notArchived(String)
+    }
+
+    private struct ArchiveCompleteBody: Decodable {
+        let archived: Bool?
+        let uri: String?
+        let error: String?
+    }
+
+    /// Asks the tower to verify the object in S3. Also the release after a failed PUT: with no
+    /// object there the tower marks the row failed, which makes it retryable.
+    func completeArchive(footageId: String, key: String) async throws -> ArchiveCompletion {
+        var request = try await request(path: "/api/v1/footage/\(footageId)/archive/complete", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["key": key])
+        let (data, response) = try await data(for: request)
+        try Self.validate(response: response, data: data)
+        let body = try decode(ArchiveCompleteBody.self, from: data)
+        if body.archived == true, let uri = body.uri { return .archived(uri: uri) }
+        return .notArchived(body.error ?? "The tower did not record the archive.")
+    }
+
+    /// Streams the original from disk to a presigned URL. No bearer token: S3 rejects a request
+    /// that carries a second authentication mechanism.
+    func uploadOriginal(_ fileURL: URL, to url: URL, headers: [String: String]) async throws {
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+        let (data, response) = try await upload(request, fromFile: fileURL)
+        guard let http = response as? HTTPURLResponse else {
+            throw BackendError.transport("S3 returned a non-HTTP response.")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw BackendError.api(
+                status: http.statusCode, code: Self.s3ErrorCode(from: data) ?? "http_\(http.statusCode)",
+                message: "S3 rejected the upload (HTTP \(http.statusCode)\(Self.s3ErrorCode(from: data).map { ", \($0)" } ?? ""))."
+            )
+        }
+    }
+
+    /// S3 errors are XML: `<Error><Code>SignatureDoesNotMatch</Code>…`.
+    static func s3ErrorCode(from data: Data) -> String? {
+        let text = String(decoding: data, as: UTF8.self)
+        guard let start = text.range(of: "<Code>"), let end = text.range(of: "</Code>", range: start.upperBound..<text.endIndex)
+        else { return nil }
+        let code = text[start.upperBound..<end.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        return code.isEmpty ? nil : code
+    }
+
     // MARK: - Plumbing
 
     private func request(path: String, method: String) async throws -> URLRequest {

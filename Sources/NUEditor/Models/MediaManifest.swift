@@ -38,6 +38,7 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var footageIdentity: FootageIdentity?
     var ingestStatus: String?
     var footageId: String?
+    var originalArchiveURI: String?
 }
 
 struct MediaImportInput: Codable, Sendable, Equatable {
