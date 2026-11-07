@@ -73,7 +73,7 @@ final class AgentService {
     var effectiveModel: AnthropicModel {
         let available = availableModels
         if available.contains(model) { return model }
-        return available.first ?? .sonnet5
+        return available.first ?? .sonnet55
     }
 
     var model: AnthropicModel = {
@@ -81,7 +81,7 @@ final class AgentService {
            let m = AnthropicModel(rawValue: raw) {
             return m
         }
-        return .sonnet5
+        return .sonnet55
     }() {
         didSet { UserDefaults.standard.set(model.rawValue, forKey: "agentModel") }
     }

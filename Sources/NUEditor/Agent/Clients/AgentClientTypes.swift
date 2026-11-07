@@ -3,30 +3,24 @@ import Foundation
 // MARK: - Shared value types
 
 enum AnthropicModel: String, CaseIterable, Sendable {
-    case sonnet5 = "claude-sonnet-5"
-    case opus48 = "claude-opus-4-8"
-    case haiku45 = "claude-haiku-4-5-20251001"
+    case sonnet55 = "claude-sonnet-5-5"
+    case opus55 = "claude-opus-5-5"
+    case haiku55 = "claude-haiku-5-5"
 
     var displayName: String {
         switch self {
-        case .sonnet5: "Sonnet 5"
-        case .opus48: "Opus 4.8"
-        case .haiku45: "Haiku 4.5"
+        case .sonnet55: "Sonnet 5.5"
+        case .opus55: "Opus 5.5"
+        case .haiku55: "Haiku 5.5"
         }
     }
 
     /// Global cross-region inference profile; the raw value stays the persisted selection.
-    var bedrockModelID: String {
-        switch self {
-        case .sonnet5: "global.anthropic.claude-sonnet-5"
-        case .opus48: "global.anthropic.claude-opus-4-8"
-        case .haiku45: "global.anthropic.claude-haiku-4-5-20251001-v1:0"
-        }
-    }
+    var bedrockModelID: String { "global.anthropic.\(rawValue)" }
 
     var requestExtras: [String: Any] {
         switch self {
-        case .sonnet5: ["output_config": ["effort": "low"]]
+        case .sonnet55: ["output_config": ["effort": "low"]]
         default: [:]
         }
     }

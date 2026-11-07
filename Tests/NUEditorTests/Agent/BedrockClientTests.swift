@@ -164,17 +164,22 @@ struct BedrockClientTests {
     }
 
     @Test func theBodyIsBedrockShaped() {
-        let body = AnthropicRequestBody.build(model: .sonnet5, maxTokens: 10, system: "s", tools: [], messages: [])
+        let body = AnthropicRequestBody.build(model: .sonnet55, maxTokens: 10, system: "s", tools: [], messages: [])
         #expect(body["anthropic_version"] as? String == "bedrock-2023-05-31")
         #expect(body["model"] == nil)
         #expect(body["stream"] == nil)
     }
 
-    // Haiku's id contains `:`, which must be escaped in the path or Bedrock reads a different model.
-    @Test func theEndpointCarriesTheEscapedModelId() {
-        let client = BedrockClient(settings: BedrockSettings(profile: "", region: "ap-northeast-1"), model: .haiku45)
+    @Test(arguments: AnthropicModel.allCases)
+    func everyModelUsesItsGlobalInferenceProfile(model: AnthropicModel) {
+        let client = BedrockClient(settings: BedrockSettings(profile: "", region: "ap-northeast-1"), model: model)
         #expect(client.endpoint()?.absoluteString ==
-            "https://bedrock-runtime.ap-northeast-1.amazonaws.com/model/global.anthropic.claude-haiku-4-5-20251001-v1%3A0/invoke-with-response-stream")
+            "https://bedrock-runtime.ap-northeast-1.amazonaws.com/model/global.anthropic.\(model.rawValue)/invoke-with-response-stream")
+    }
+
+    // A versioned id like `…-v1:0` must reach Bedrock escaped, or the path names a different resource.
+    @Test func modelIdsAreEscapedInThePath() {
+        #expect(AWSSigV4.uriEncode("claude-x-v1:0") == "claude-x-v1%3A0")
     }
 
     @Test(arguments: [
@@ -210,7 +215,7 @@ struct BedrockStreamTests {
             return Self.credentials
         }
         return BedrockClient(
-            settings: BedrockSettings(profile: "", region: region), model: .sonnet5,
+            settings: BedrockSettings(profile: "", region: region), model: .sonnet55,
             credentials: provider, session: StubHTTP.session()
         )
     }
@@ -231,7 +236,7 @@ struct BedrockStreamTests {
         let out = try await collect(client(region: region))
         #expect(out == [.textDelta("Done"), .messageStop(stopReason: .endTurn)])
         let request = try #require(StubHTTP.requests(to: host).first)
-        #expect(request.url.path == "/model/global.anthropic.claude-sonnet-5/invoke-with-response-stream")
+        #expect(request.url.path == "/model/global.anthropic.claude-sonnet-5-5/invoke-with-response-stream")
         #expect(request.headers["Authorization"]?.hasPrefix("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/") == true)
         #expect(request.headers["Authorization"]?.contains("/\(region)/bedrock/aws4_request") == true)
     }
