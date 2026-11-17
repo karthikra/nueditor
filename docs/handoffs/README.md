@@ -88,12 +88,13 @@ There is no tower-side equivalent: the tower has no copy of this repo.
 
 | Date | Thread | Request (tower) | Reply (editor) | Status |
 |---|---|---|---|---|
-| 2026-11-07 | Archive camera originals to S3 (Stage 5) | — | `docs/phase4/2026-11-07-archive-originals-handoff.md` (editor→tower) | ⏳ nuhub #18 sent as a summary only; full content not yet delivered, no reply |
+| 2026-11-07 | Archive camera originals to S3 (Stage 5) | — | `docs/phase4/2026-11-07-archive-originals-handoff.md` (editor→tower) | ⏳ full text sent 2026-11-17 as nuhub #19 (#18 was a summary); unconfirmed |
 | 2026-08-21 | One source of truth for the nuhub address (config-drift fix) | — | `docs/phase4/2026-08-21-nuhub-config-ssot-handoff.md` (editor→tower) | ✅ superseded 2026-11-14: the nuhub plugin now supplies the address; generator, `.mcp.json` and SessionStart check removed |
-| 2026-08-21 | Fractional fps (q1) + 23.976-in-24 playback | nuhub #10/#11 (tower→editor asks) | `docs/phase4/2026-08-21-fractional-fps-and-drift-findings.md` | ⏳ answered in this repo only — delivery to the tower unconfirmed (it cannot pull nueditor). q1 since superseded by fractional fps (`5217708`); drift = judder not desync; keep tower `97c2f7b` |
-| 2026-08-21 | Own the ASR + diarization stack, drop Deepgram | `docs/phase4/2026-08-21-own-the-asr-diarization-stack-handoff.md` (editor→tower) | awaiting tower findings | ⏳ delivery unconfirmed (editor→tower doc); tower to reply + gate Deepgram removal on audio-only benchmark |
+| 2026-08-21 | Fractional fps shipped, edge ingest built, transcript ownership | nuhub #10/#11/#14/#15 (tower→editor asks) | `docs/phase4/2026-08-21-fractional-fps-shipped-and-edge-ingest.md` | ⏳ full text sent 2026-11-17 as nuhub #20; unconfirmed. Its §2.2 auth claim is corrected by the 11-07 handoff §0 |
+| 2026-08-21 | Fractional fps (q1) + 23.976-in-24 playback | nuhub #10/#11 (tower→editor asks) | `docs/phase4/2026-08-21-fractional-fps-and-drift-findings.md` | ✅ superseded by the fractional-fps-shipped findings above; deliberately not resent |
+| 2026-08-21 | Own the ASR + diarization stack, drop Deepgram | `docs/phase4/2026-08-21-own-the-asr-diarization-stack-handoff.md` (editor→tower) | awaiting tower findings | ⏳ full text sent 2026-11-17 as nuhub #21; unconfirmed. Tower to reply + gate Deepgram removal on audio-only benchmark |
 | 2026-07-27 | MCP placement verification | `nuedit …/handoffs/2026-07-27-nueditor-placement-handoff.md` | `docs/phase4/2026-07-27-placement-findings.md` | ✅ answered |
 | 2026-08-01 | Reciprocal CLAUDE.md section for the tower | — | `docs/handoffs/nuedit-CLAUDE-section.md` | ✅ superseded — tower's CLAUDE.md already has the two-channel (git + nuhub) protocol |
-| 2026-07-28 | Fill fetch: http vs https | placement handoff §5 (updated `bbdb9da`) | `docs/phase4/2026-07-28-fill-fetch-followup.md` | ⏳ awaiting tower: bytes vs Tailscale-HTTPS; delivery unconfirmed |
+| 2026-07-28 | Fill fetch: http vs https | placement handoff §5 (updated `bbdb9da`) | `docs/phase4/2026-07-28-fill-fetch-followup.md` | ✅ answered by the tower: `_import_source` defaults to bytes (fix A), seen in `nuedit` @ `6c53407` |
 
 Newest first. When a thread closes, mark it ✅ and leave it for history.
