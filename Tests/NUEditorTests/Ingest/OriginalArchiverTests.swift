@@ -32,6 +32,7 @@ struct OriginalArchiverTests {
     /// A tower and an S3 endpoint with the given behaviour, and a real original on disk.
     private func fixture(
         presign: [String: Any]? = nil,
+        presignStatus: Int = 200,
         grantHeaders: [String: String]? = nil,
         s3Status: Int = 200,
         s3Body: Data = Data(),
@@ -55,12 +56,12 @@ struct OriginalArchiverTests {
         let grantBody = Self.json(grant), completeBody = Self.json(complete)
         let towerHost = StubHTTP.host { request in
             let path = request.url?.path ?? ""
-            if path.hasSuffix("/archive/presign") { return (200, grantBody) }
+            if path.hasSuffix("/archive/presign") { return (presignStatus, grantBody) }
             if path.hasSuffix("/archive/complete") { return (200, completeBody) }
             return (404, Self.json(["detail": "not stubbed"]))
         }
         let client = NUEDITBackendClient(session: StubHTTP.session())
-        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://\(towerHost)"), token: "tower-token"))
+        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://\(towerHost)"), agentKey: "nuedit-agent-key-test"))
         return Fixture(
             directory: directory, original: original, identity: identity,
             towerHost: towerHost, s3Host: s3Host, client: client
@@ -78,15 +79,26 @@ struct OriginalArchiverTests {
         #expect(try JSONDecoder().decode([String: String].self, from: completeBody) == ["key": "p/f-1/A001.mov"])
     }
 
-    // S3 rejects a request carrying two auth mechanisms, and the tower token must never reach S3.
-    @Test func theUploadCarriesTheSignedHeadersAndNoBearerToken() async throws {
+    // S3 rejects a request carrying two auth mechanisms, and the agent key must never reach S3.
+    @Test func theAgentKeyGoesToTheTowerAndNeverToS3() async throws {
         let f = try await fixture()
         defer { f.cleanUp() }
         _ = await OriginalArchiver.archive(f.request(), client: f.client)
         let put = try #require(f.s3Requests.first)
         #expect(put.headers["Authorization"] == nil)
+        #expect(put.headers["X-Agent-Key"] == nil)
         #expect(put.headers["Content-Type"] == "application/octet-stream")
-        #expect(f.towerRequests.first?.headers["Authorization"] == "Bearer tower-token")
+        #expect(f.towerRequests.allSatisfy { $0.headers["X-Agent-Key"] == "nuedit-agent-key-test" })
+        #expect(f.towerRequests.allSatisfy { $0.headers["Authorization"] == nil })
+    }
+
+    @Test func aRejectedAgentKeyFailsBeforeAnyUpload() async throws {
+        let f = try await fixture(presign: ["detail": "Invalid agent key"], presignStatus: 401)
+        defer { f.cleanUp() }
+        let outcome = await OriginalArchiver.archive(f.request(), client: f.client)
+        #expect(outcome == .failed(BackendError.unauthorized(.rejectedKey).localizedDescription))
+        #expect(f.s3Requests.isEmpty)
+        #expect(f.towerRequests.map(\.url.path) == ["/api/v1/footage/f-1/archive/presign"])
     }
 
     @Test func headersTheTowerReturnsAreSentExactly() async throws {
@@ -178,7 +190,7 @@ struct OriginalArchiverTests {
         defer { f.cleanUp() }
         let client = NUEDITBackendClient()
         // Port 1 refuses immediately: a transport failure, not an API rejection.
-        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://127.0.0.1:1"), token: nil))
+        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://127.0.0.1:1"), agentKey: nil))
         guard case .skipped = await OriginalArchiver.archive(f.request(), client: client) else {
             Issue.record("an unreachable tower must skip")
             return
@@ -189,7 +201,7 @@ struct OriginalArchiverTests {
         let f = try await fixture()
         defer { f.cleanUp() }
         let client = NUEDITBackendClient()
-        await client.use(NUEDITBackendSettings(baseURL: nil, token: nil))
+        await client.use(NUEDITBackendSettings(baseURL: nil, agentKey: nil))
         #expect(await OriginalArchiver.archive(f.request(), client: client) == .skipped("No tower configured."))
     }
 

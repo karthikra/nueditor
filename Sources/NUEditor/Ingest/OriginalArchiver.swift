@@ -121,7 +121,7 @@ enum OriginalArchiver {
             switch error {
             case .transport(let message): return .skipped(message)
             case .notConfigured: return .skipped("No tower configured.")
-            case .api: return .failed(error.localizedDescription)
+            case .unauthorized, .api: return .failed(error.localizedDescription)
             }
         }
         if (error as? URLError)?.code == .cancelled { return .skipped("Cancelled.") }

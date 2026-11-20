@@ -37,6 +37,29 @@ actor NUEDITBackendClient {
         return (response as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
     }
 
+    enum AgentKeyCheck: Sendable, Equatable {
+        case accepted
+        case missing
+        case rejected
+        /// The check itself could not run: no tower configured, or no answer.
+        case unknown(String)
+    }
+
+    /// Makes one authenticated read so Settings can tell a good key from a bad one before any upload.
+    func checkAgentKey() async -> AgentKeyCheck {
+        guard await currentSettings().agentKey != nil else { return .missing }
+        do {
+            let request = try await request(path: "/api/v1/projects", method: "GET")
+            let (data, response) = try await data(for: request)
+            try Self.validate(response: response, data: data)
+            return .accepted
+        } catch BackendError.unauthorized(let failure) {
+            return failure == .rejectedKey ? .rejected : .missing
+        } catch {
+            return .unknown(error.localizedDescription)
+        }
+    }
+
     // MARK: - Edge ingest
 
     struct EdgeIngestMeta: Codable, Sendable, Equatable {
@@ -216,7 +239,7 @@ actor NUEDITBackendClient {
         return .notArchived(body.error ?? "The tower did not record the archive.")
     }
 
-    /// Streams the original from disk to a presigned URL. No bearer token: S3 rejects a request
+    /// Streams the original from disk to a presigned URL. No tower credential: S3 rejects a request
     /// that carries a second authentication mechanism.
     func uploadOriginal(_ fileURL: URL, to url: URL, headers: [String: String]) async throws {
         var request = URLRequest(url: url)
@@ -245,6 +268,10 @@ actor NUEDITBackendClient {
 
     // MARK: - Plumbing
 
+    static let agentKeyHeader = "X-Agent-Key"
+    /// The tower's fixed 401 detail for a bad, revoked, or orphaned key (`views/v1/auth.py`).
+    static let agentKeyInvalidDetail = "Invalid agent key"
+
     private func request(path: String, method: String) async throws -> URLRequest {
         let settings = await currentSettings()
         guard let baseURL = settings.baseURL else { throw BackendError.notConfigured }
@@ -254,8 +281,8 @@ actor NUEDITBackendClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let token = settings.token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let agentKey = settings.agentKey {
+            request.setValue(agentKey, forHTTPHeaderField: Self.agentKeyHeader)
         }
         return request
     }
@@ -294,6 +321,9 @@ actor NUEDITBackendClient {
             throw BackendError.transport("The tower returned a non-HTTP response.")
         }
         guard !(200..<300).contains(http.statusCode) else { return }
+        if http.statusCode == 401 {
+            throw BackendError.unauthorized(detail(from: data) == agentKeyInvalidDetail ? .rejectedKey : .missingKey)
+        }
         throw BackendError.api(
             status: http.statusCode,
             code: "http_\(http.statusCode)",

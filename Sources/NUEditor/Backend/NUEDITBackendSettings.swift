@@ -9,31 +9,38 @@ import Foundation
 /// 3. nothing — the backend is unconfigured and every call fails loudly rather than guessing a host.
 struct NUEDITBackendSettings: Sendable, Equatable {
     var baseURL: URL?
-    /// Bearer token. The tower is unauthenticated on the tailnet today; this exists so adding auth
-    /// is a settings change rather than a rebuild. Move to the Keychain if it ever holds a real secret.
-    var token: String?
+    /// The per-machine key the tower mints at `POST /api/v1/agent/keys`, sent as `X-Agent-Key`.
+    var agentKey: String?
 
     var isConfigured: Bool { baseURL != nil }
 }
 
 enum NUEDITBackendSettingsStore {
     static let baseURLOverrideKey = "nueditBackendBaseURL"
-    static let tokenKey = "nueditBackendToken"
+    static let agentKeyAccount = "nuedit-agent-key"
 
-    /// Reads the override and the SSOT file. Touches the filesystem — call it off the main actor.
+    /// Reads the override, the SSOT file, and the Keychain — call it off the main actor.
     @concurrent
     static func resolve(
         defaults: UserDefaults = .standard,
         hubTOML: URL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".nuhandoff/hub.toml")
+            .appendingPathComponent(".nuhandoff/hub.toml"),
+        agentKey: @Sendable () -> String? = { KeychainStore.load(account: agentKeyAccount) }
     ) async -> NUEDITBackendSettings {
         let override = defaults.string(forKey: baseURLOverrideKey)?.trimmingCharacters(in: .whitespaces)
-        let token = defaults.string(forKey: tokenKey)?.trimmingCharacters(in: .whitespaces)
         let raw = (override?.isEmpty == false ? override : nil) ?? value(forKey: "api_url", in: hubTOML)
-        return NUEDITBackendSettings(
-            baseURL: raw.flatMap(normalizedBaseURL),
-            token: (token?.isEmpty == false) ? token : nil
-        )
+        return NUEDITBackendSettings(baseURL: raw.flatMap(normalizedBaseURL), agentKey: agentKey())
+    }
+
+    /// Stores the key, or removes it when `key` is blank.
+    @concurrent
+    static func storeAgentKey(_ key: String) async throws {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            try KeychainStore.delete(account: agentKeyAccount)
+        } else {
+            try KeychainStore.save(trimmed, account: agentKeyAccount)
+        }
     }
 
     /// A trailing slash or an accidental `/api/v1` suffix must not produce a double-pathed URL.

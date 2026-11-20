@@ -45,7 +45,7 @@ struct EdgeRegistrarTests {
         try Data("proxy".utf8).write(to: proxy)
 
         let client = NUEDITBackendClient()
-        await client.use(NUEDITBackendSettings(baseURL: nil, token: nil))
+        await client.use(NUEDITBackendSettings(baseURL: nil, agentKey: nil))
         let outcome = await EdgeRegistrar.register(request(derivatives: [.vlm: proxy]), client: client, stagingDirectory: dir)
         guard case .skipped = outcome else {
             Issue.record("expected skipped, got \(outcome)")
@@ -57,7 +57,7 @@ struct EdgeRegistrarTests {
         let dir = try scratch()
         defer { try? FileManager.default.removeItem(at: dir) }
         let client = NUEDITBackendClient()
-        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://127.0.0.1:1"), token: nil))
+        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://127.0.0.1:1"), agentKey: nil))
         // A preview proxy alone is not enough: the tower requires vlm_proxy or audio.
         let preview = dir.appendingPathComponent("preview.mp4")
         try Data("preview".utf8).write(to: preview)
@@ -69,7 +69,7 @@ struct EdgeRegistrarTests {
         let dir = try scratch()
         defer { try? FileManager.default.removeItem(at: dir) }
         let client = NUEDITBackendClient()
-        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://127.0.0.1:1"), token: nil))
+        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://127.0.0.1:1"), agentKey: nil))
         let gone = dir.appendingPathComponent("gone.mp4")
         let outcome = await EdgeRegistrar.register(request(derivatives: [.vlm: gone]), client: client, stagingDirectory: dir)
         #expect(outcome == .skipped("No derivative to send yet."))
@@ -83,7 +83,7 @@ struct EdgeRegistrarTests {
         try Data("proxy".utf8).write(to: proxy)
         let client = NUEDITBackendClient()
         // Port 1 refuses immediately: a transport failure, not an API rejection.
-        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://127.0.0.1:1"), token: nil))
+        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://127.0.0.1:1"), agentKey: nil))
         let outcome = await EdgeRegistrar.register(request(derivatives: [.vlm: proxy]), client: client, stagingDirectory: dir)
         guard case .skipped = outcome else {
             Issue.record("an unreachable tower must skip, got \(outcome)")

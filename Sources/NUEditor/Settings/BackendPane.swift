@@ -4,10 +4,12 @@ import SwiftUI
 /// machine's SSOT (`api_url` in ~/.nuhandoff/hub.toml); the editor works fully without a tower.
 struct BackendPane: View {
     @AppStorage(NUEDITBackendSettingsStore.baseURLOverrideKey) private var baseURLOverride = ""
-    @AppStorage(NUEDITBackendSettingsStore.tokenKey) private var token = ""
 
+    @State private var keyDraft = ""
+    @State private var keyError: String?
     @State private var resolved: NUEDITBackendSettings?
     @State private var reachability: Reachability = .unknown
+    @State private var keyCheck: NUEDITBackendClient.AgentKeyCheck?
     @State private var probe: Task<Void, Never>?
 
     private enum Reachability: Equatable { case unknown, checking, reachable, unreachable }
@@ -16,30 +18,63 @@ struct BackendPane: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
             SettingsSection(title: "NUEDIT tower") {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                    field(
-                        title: "Address",
-                        help: "Blank uses this machine's api_url from ~/.nuhandoff/hub.toml.",
-                        placeholder: resolvedPlaceholder,
-                        text: $baseURLOverride
-                    )
-                    field(
-                        title: "Token",
-                        help: "Optional. The tower is unauthenticated on the tailnet today.",
-                        placeholder: "None",
-                        text: $token
-                    )
+                    addressField
+                    agentKeyField
                     status
                 }
             }
         }
         .task { await refresh() }
         .onChange(of: baseURLOverride) { _, _ in scheduleRefresh() }
-        .onChange(of: token) { _, _ in scheduleRefresh() }
         .onDisappear { probe?.cancel() }
     }
 
-    private var resolvedPlaceholder: String {
-        resolved?.baseURL?.absoluteString ?? "Not configured"
+    private var addressField: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+            fieldTitle("Address")
+            TextField(resolved?.baseURL?.absoluteString ?? "Not configured", text: $baseURLOverride)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: AppTheme.FontSize.sm).monospaced())
+            fieldHelp("Blank uses this machine's api_url from ~/.nuhandoff/hub.toml.")
+        }
+    }
+
+    private var hasStoredKey: Bool { resolved?.agentKey != nil }
+
+    private var agentKeyField: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+            fieldTitle("Agent key")
+            HStack(spacing: AppTheme.Spacing.sm) {
+                SecureField(hasStoredKey ? "Stored in the Keychain" : "Not set", text: $keyDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: AppTheme.FontSize.sm).monospaced())
+                    .onSubmit { storeKey(keyDraft) }
+                Button("Save") { storeKey(keyDraft) }
+                    .disabled(keyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if hasStoredKey {
+                    Button("Remove") { storeKey("") }
+                }
+            }
+            if let keyError {
+                Text(keyError)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Status.errorColor)
+            } else {
+                fieldHelp("Mint one on the tower with POST /api/v1/agent/keys. Held in the Keychain.")
+            }
+        }
+    }
+
+    private func fieldTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: AppTheme.FontSize.md))
+            .foregroundStyle(AppTheme.Text.primaryColor)
+    }
+
+    private func fieldHelp(_ help: String) -> some View {
+        Text(help)
+            .font(.system(size: AppTheme.FontSize.xs))
+            .foregroundStyle(AppTheme.Text.tertiaryColor)
     }
 
     private var status: some View {
@@ -61,7 +96,12 @@ struct BackendPane: View {
 
     private var statusColor: Color {
         switch reachability {
-        case .reachable: AppTheme.Status.successColor
+        case .reachable:
+            switch keyCheck {
+            case .accepted: AppTheme.Status.successColor
+            case .rejected: AppTheme.Status.errorColor
+            case .missing, .unknown, nil: AppTheme.Status.warningColor
+            }
         case .unreachable: AppTheme.Status.warningColor
         case .unknown, .checking: AppTheme.Text.tertiaryColor
         }
@@ -73,23 +113,30 @@ struct BackendPane: View {
         }
         switch reachability {
         case .checking: return "Checking…"
-        case .reachable: return "Connected."
         case .unreachable: return "No answer. Footage stays local and registers later."
         case .unknown: return " "
+        case .reachable:
+            switch keyCheck {
+            case .accepted: return "Connected. Agent key accepted."
+            case .missing: return "Connected. Add an agent key to register footage."
+            case .rejected: return "Connected, but the tower rejected this key. Re-authorize this Mac."
+            case .unknown(let reason): return "Connected. Agent key not checked: \(reason)"
+            case nil: return "Connected."
+            }
         }
     }
 
-    private func field(title: String, help: String, placeholder: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-            Text(title)
-                .font(.system(size: AppTheme.FontSize.md))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-            TextField(placeholder, text: text)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: AppTheme.FontSize.sm).monospaced())
-            Text(help)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
+    private func storeKey(_ key: String) {
+        probe?.cancel()
+        probe = Task { @MainActor in
+            do {
+                try await NUEDITBackendSettingsStore.storeAgentKey(key)
+                keyDraft = ""
+                keyError = nil
+            } catch {
+                keyError = error.localizedDescription
+            }
+            await refresh()
         }
     }
 
@@ -106,6 +153,7 @@ struct BackendPane: View {
         await NUEDITBackendClient.shared.invalidateSettings()
         let settings = await NUEDITBackendClient.shared.currentSettings()
         resolved = settings
+        keyCheck = nil
         guard settings.isConfigured else {
             reachability = .unknown
             return
@@ -113,6 +161,13 @@ struct BackendPane: View {
         reachability = .checking
         let reachable = await NUEDITBackendClient.shared.isReachable()
         guard !Task.isCancelled else { return }
-        reachability = reachable ? .reachable : .unreachable
+        guard reachable else {
+            reachability = .unreachable
+            return
+        }
+        let check = await NUEDITBackendClient.shared.checkAgentKey()
+        guard !Task.isCancelled else { return }
+        keyCheck = check
+        reachability = .reachable
     }
 }

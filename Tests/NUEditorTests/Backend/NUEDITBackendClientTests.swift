@@ -21,9 +21,9 @@ struct NUEDITBackendSettingsTests {
             """)
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         let defaults = try #require(UserDefaults(suiteName: "test.\(UUID().uuidString)"))
-        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file)
+        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file, agentKey: { nil })
         #expect(settings.baseURL?.absoluteString == "http://100.96.118.41:8000")
-        #expect(settings.token == nil)
+        #expect(settings.agentKey == nil)
     }
 
     @Test func settingsOverrideWinsOverTheSSOT() async throws {
@@ -31,7 +31,7 @@ struct NUEDITBackendSettingsTests {
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         let defaults = try #require(UserDefaults(suiteName: "test.\(UUID().uuidString)"))
         defaults.set("http://127.0.0.1:9000", forKey: NUEDITBackendSettingsStore.baseURLOverrideKey)
-        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file)
+        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file, agentKey: { nil })
         #expect(settings.baseURL?.absoluteString == "http://127.0.0.1:9000")
     }
 
@@ -40,7 +40,7 @@ struct NUEDITBackendSettingsTests {
         let file = try hubTOML(#"url = "http://tower:8011/mcp""#)
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         let defaults = try #require(UserDefaults(suiteName: "test.\(UUID().uuidString)"))
-        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file)
+        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file, agentKey: { nil })
         #expect(settings.baseURL == nil)
         #expect(!settings.isConfigured)
     }
@@ -137,6 +137,20 @@ struct NUEDITBackendClientResponseTests {
         #expect(NUEDITBackendClient.detail(from: data) == "field required")
     }
 
+    @Test(arguments: [
+        (#"{"detail":"Invalid agent key"}"#, BackendError.AuthFailure.rejectedKey),
+        (#"{"detail":"Not authenticated"}"#, .missingKey),
+        ("", .missingKey),
+    ])
+    func mapsUnauthorizedToTheActionTheUserMustTake(body: String, expected: BackendError.AuthFailure) {
+        #expect {
+            try NUEDITBackendClient.validate(response: response(401), data: Data(body.utf8))
+        } throws: { error in
+            guard case BackendError.unauthorized(let failure) = error else { return false }
+            return failure == expected
+        }
+    }
+
     @Test func duplicateIsSuccessNotFailure() throws {
         let data = Data(#"{"id":"f-1","status":"duplicate","filename":"a.mov"}"#.utf8)
         let decoded = try JSONDecoder().decode(NUEDITBackendClient.EdgeRegisterResponse.self, from: data)
@@ -152,5 +166,44 @@ struct NUEDITBackendClientResponseTests {
         #expect(NUEDITBackendClient.Derivative.audio.filename == "audio_cleaned.wav")
         #expect(NUEDITBackendClient.Derivative.previewProxy.filename == "preview_proxy.mp4")
         #expect(NUEDITBackendClient.Derivative.thumbnail.filename == "thumbnail.jpg")
+    }
+}
+
+@Suite("NUEDITBackendClient — agent key check")
+struct NUEDITBackendAgentKeyCheckTests {
+
+    private func client(status: Int, body: String, agentKey: String?) async -> (NUEDITBackendClient, String) {
+        let host = StubHTTP.host { _ in (status, Data(body.utf8)) }
+        let client = NUEDITBackendClient(session: StubHTTP.session())
+        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://\(host)"), agentKey: agentKey))
+        return (client, host)
+    }
+
+    @Test func noStoredKeyIsMissingWithoutAskingTheTower() async {
+        let (client, host) = await client(status: 200, body: "[]", agentKey: nil)
+        #expect(await client.checkAgentKey() == .missing)
+        #expect(StubHTTP.requests(to: host).isEmpty)
+    }
+
+    @Test func anAuthenticatedReadAcceptsTheKey() async throws {
+        let (client, host) = await client(status: 200, body: "[]", agentKey: "k-1")
+        #expect(await client.checkAgentKey() == .accepted)
+        let request = try #require(StubHTTP.requests(to: host).first)
+        #expect(request.url.path == "/api/v1/projects")
+        #expect(request.headers["X-Agent-Key"] == "k-1")
+    }
+
+    @Test func theTowersInvalidKeyDetailRejectsTheKey() async {
+        let (client, _) = await client(status: 401, body: #"{"detail":"Invalid agent key"}"#, agentKey: "k-1")
+        #expect(await client.checkAgentKey() == .rejected)
+    }
+
+    @Test func anUnreachableTowerLeavesTheKeyUnchecked() async {
+        let client = NUEDITBackendClient()
+        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://127.0.0.1:1"), agentKey: "k-1"))
+        guard case .unknown = await client.checkAgentKey() else {
+            Issue.record("an unreachable tower must not judge the key")
+            return
+        }
     }
 }

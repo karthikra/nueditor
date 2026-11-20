@@ -32,6 +32,7 @@ extension ToolExecutor {
             "linked": editor.towerProjectId != nil,
             "changed": changed,
             "backendConfigured": backend.isConfigured,
+            "agentKeyConfigured": backend.agentKey != nil,
             "footage": ingestSummary(editor),
             "originals": archiveSummary(editor),
         ]
@@ -41,6 +42,8 @@ extension ToolExecutor {
             payload["note"] = "Not linked — footage is identified and proxied locally but nothing is sent."
         } else if !backend.isConfigured {
             payload["note"] = "Linked, but no tower address is configured on this Mac, so nothing can be sent yet."
+        } else if backend.agentKey == nil {
+            payload["note"] = "Linked, but this Mac has no agent key for the tower, so registration will fail. Add one in Settings → Backend."
         }
         return .ok(Self.jsonString(payload) ?? "{}")
     }
