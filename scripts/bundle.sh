@@ -57,6 +57,8 @@ cp "$RESOURCES/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 # Flatten SwiftPM's resource bundle into the app's Resources tree.
 RES_BUNDLE="$(dirname "$BIN")/NUEditor_NUEditor.bundle"
+# Swift 6.4+ emits a standard macOS bundle (Contents/Resources); earlier toolchains emit it flat.
+[ -d "$RES_BUNDLE/Contents/Resources" ] && RES_BUNDLE="$RES_BUNDLE/Contents/Resources"
 if [ -d "$RES_BUNDLE/Fonts" ]; then
   cp -R "$RES_BUNDLE/Fonts" "$APP/Contents/Resources/"
 else
