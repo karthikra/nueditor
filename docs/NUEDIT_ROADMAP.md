@@ -50,7 +50,9 @@ into the editor. Full design: NUEDIT repo `docs/superpowers/specs/2026-07-24-gen
   (edit) and NUEDIT's MCP (intelligence/generation).
 - **Reverse channel (Mac → tower, REST):** ✅ shipped — `NUEDITBackendClient` talks to NUEDIT
   `/api/v1`; the tower's address comes from this machine's `~/.nuhandoff/hub.toml` SSOT with a
-  Settings override. Not yet live-verified (the tower's API is not listening).
+  Settings override. Authenticates with a per-machine agent key (`X-Agent-Key`) held in the Keychain; the
+  tower is reached by its tailnet name (`http://tower:8000`), since App Transport Security blocks plain HTTP
+  to a raw IP.
   Spec: `docs/phase4/swift-reverse-channel.md`.
 - **Edge ingest:** NUEditor is the ingest point for raw footage — probe + checksum + local proxies,
   edit off the proxy, upload **only proxies** to the tower (raw never crosses the network), originals
@@ -63,7 +65,9 @@ into the editor. Full design: NUEDIT repo `docs/superpowers/specs/2026-07-24-gen
   hashed, and always calls `complete` so a failed upload stays retryable. Larger files wait on the
   tower's multipart flow — see `docs/phase4/2026-11-07-archive-originals-handoff.md`. Stage 4
   (content-addressed relink / offline UX) not started.
-  Registration is not live-verified until the tower's API answers.
+  **Live-verified 2026-11-21** on a dedicated tower test project: link → register → single-PUT archive, driven
+  over MCP, with the tower reading back the footage row and S3's stored size and SHA-256 (nuhub #29/#30).
+  Multipart (> 5 GB) is built on the tower but not yet on the Mac.
   Plan: `docs/plans/2026-08-20-edge-ingest.md`.
 - **Scriptmaker** panel (drives NUEDIT script/section/matching).
 - **Generation UI:** trigger video/image/music/VO + the gap-fill flow from the editor.
