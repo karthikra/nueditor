@@ -4,14 +4,14 @@ import Foundation
 extension EditorViewModel {
 
     /// Repoint a single asset at a new source file, re-validate, and rebuild.
-    func relinkAsset(id: String, to newURL: URL) {
+    func relinkAsset(id: String, to newURL: URL, notify: Bool = true) {
         guard let asset = mediaAssets.first(where: { $0.id == id }) else { return }
         if let newType = ClipType(fileExtension: newURL.pathExtension.lowercased()), newType != asset.type {
             mediaPanelToast = "Can't relink — \"\(newURL.lastPathComponent)\" is \(newType.trackLabel.lowercased()), not \(asset.type.trackLabel.lowercased())."
             return
         }
         applyRelink(id: id, to: newURL)
-        notifyTimelineChanged()
+        if notify { notifyTimelineChanged() }
     }
 
     /// Match every offline asset to a same-named file under `folder` (recursive) and relink it.

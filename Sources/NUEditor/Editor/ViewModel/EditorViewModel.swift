@@ -179,6 +179,9 @@ final class EditorViewModel {
     var unprocessableMediaRefs: Set<String> = []
     var missingMediaRefs: Set<String> = []
     @ObservationIgnored var missingMediaRefreshTask: Task<Void, Never>?
+    @ObservationIgnored var identityRelinkTask: Task<Void, Never>?
+    @ObservationIgnored var identityRelinkRequested = false
+    @ObservationIgnored var volumeObservers: [NSObjectProtocol] = []
     let mediaVisualCache = MediaVisualCache()
     let searchIndex = SearchIndexCoordinator()
     var projectURL: URL? {
