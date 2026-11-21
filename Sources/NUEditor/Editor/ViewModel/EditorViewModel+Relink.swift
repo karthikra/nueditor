@@ -14,19 +14,32 @@ extension EditorViewModel {
         if notify { notifyTimelineChanged() }
     }
 
-    /// Match every offline asset to a same-named file under `folder` (recursive) and relink it.
+    /// Relinks every offline asset to a file under `folder` (recursive): by content for identified
+    /// footage, by filename otherwise. Scanning and hashing run off the main actor.
     @discardableResult
-    func relinkOfflineAssets(fromFolder folder: URL) -> (relinked: Int, total: Int) {
+    func relinkOfflineAssets(fromFolder folder: URL) async -> (relinked: Int, total: Int) {
         let offline = mediaAssets.filter { isMediaOffline($0.id) }
         guard !offline.isEmpty else { return (0, 0) }
-        let index = fileIndex(in: folder)
+        let clips = offline.map {
+            FolderRelinkMatcher.OfflineClip(id: $0.id, filename: $0.url.lastPathComponent, identity: $0.footageIdentity)
+        }
+        let before = Dictionary(uniqueKeysWithValues: offline.map { ($0.id, $0.url) })
+        let files = await FolderRelinkMatcher.scan(folder)
+        let matches = await FolderRelinkMatcher.match(clips, in: files)
+
         var relinked = 0
-        for asset in offline {
-            guard let match = index[asset.url.lastPathComponent.lowercased()] else { continue }
-            applyRelink(id: asset.id, to: match)
+        for (id, url) in matches {
+            // The library may have moved on while the folder was searched.
+            guard let asset = mediaAssets.first(where: { $0.id == id }), asset.url == before[id], isMediaOffline(id) else { continue }
+            relinkAsset(id: id, to: url, notify: false)
+            if asset.footageIdentity != nil { ingest.cancel(assetId: id) }
             relinked += 1
         }
-        if relinked > 0 { notifyTimelineChanged() }
+        if relinked > 0 {
+            notifyTimelineChanged()
+            ingest.registerPendingFootage()
+        }
+        Log.project.info("relink from folder relinked=\(relinked) of offline=\(offline.count) files=\(files.count)")
         return (relinked, offline.count)
     }
 
@@ -42,20 +55,5 @@ extension EditorViewModel {
         }
         let asset = mediaAssets[i]
         Task { await finalizeImportedAsset(asset) }
-    }
-
-    /// Lowercased filename → URL for regular files under `folder`, first match wins.
-    private func fileIndex(in folder: URL) -> [String: URL] {
-        var map: [String: URL] = [:]
-        let keys: Set<URLResourceKey> = [.isRegularFileKey]
-        guard let walker = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: Array(keys)) else {
-            return map
-        }
-        for case let url as URL in walker {
-            guard (try? url.resourceValues(forKeys: keys))?.isRegularFile == true else { continue }
-            let key = url.lastPathComponent.lowercased()
-            if map[key] == nil { map[key] = url }
-        }
-        return map
     }
 }

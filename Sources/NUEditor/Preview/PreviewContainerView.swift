@@ -393,8 +393,14 @@ struct PreviewContainerView: View {
         panel.message = "Choose the folder that holds your media"
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            let result = editor.relinkOfflineAssets(fromFolder: url)
-            editor.mediaPanelToast = "Relinked \(result.relinked) of \(result.total) offline clips."
+            editor.mediaPanelToast = MediaPanelToast(message: "Searching \(url.lastPathComponent)…", kind: .progress)
+            Task { @MainActor in
+                let result = await editor.relinkOfflineAssets(fromFolder: url)
+                editor.mediaPanelToast = MediaPanelToast(
+                    message: "Relinked \(result.relinked) of \(result.total) offline clips.",
+                    kind: result.relinked > 0 ? .success : .warning
+                )
+            }
         }
     }
 
