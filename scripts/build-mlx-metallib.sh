@@ -1,9 +1,9 @@
 #!/bin/bash
 # scripts/build-mlx-metallib.sh <output.metallib> — compile MLX's Metal kernels for on-device speech.
 #
-# Replaces speech-swift's build_mlx_metallib.sh, which passes no -std: the Metal compiler shipped with
-# Xcode 27 defaults to a language version MLX's kernels don't compile under. Pinned to Metal 4.0, the
-# macOS 26 baseline. Rebuilds only when the kernel sources change.
+# Replaces speech-swift's build_mlx_metallib.sh, which passes no -std and so builds with whatever
+# language version the installed Xcode defaults to (Xcode 27's broke MLX 0.31's kernels). Pinned to
+# Metal 4.0, the macOS 26 baseline. Rebuilds only when the kernel sources or the pin change.
 
 set -euo pipefail
 OUT="${1:?usage: build-mlx-metallib.sh <output.metallib>}"
