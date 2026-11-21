@@ -52,11 +52,11 @@ actor NUEDITBackendClient {
         case unknown(String)
     }
 
-    /// Makes one authenticated read so Settings can tell a good key from a bad one before any upload.
+    /// One parameter-free authenticated read, so Settings can judge the key before any upload.
     func checkAgentKey() async -> AgentKeyCheck {
         guard await currentSettings().agentKey != nil else { return .missing }
         do {
-            let request = try await request(path: "/api/v1/projects", method: "GET")
+            let request = try await request(path: "/api/v1/agent/status", method: "GET")
             let (data, response) = try await data(for: request)
             try Self.validate(response: response, data: data)
             return .accepted

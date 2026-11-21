@@ -189,7 +189,7 @@ struct NUEDITBackendAgentKeyCheckTests {
         let (client, host) = await client(status: 200, body: "[]", agentKey: "k-1")
         #expect(await client.checkAgentKey() == .accepted)
         let request = try #require(StubHTTP.requests(to: host).first)
-        #expect(request.url.path == "/api/v1/projects")
+        #expect(request.url.path == "/api/v1/agent/status")
         #expect(request.headers["X-Agent-Key"] == "k-1")
     }
 
