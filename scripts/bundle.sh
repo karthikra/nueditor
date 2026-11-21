@@ -110,11 +110,8 @@ if ! ls "$RES_BUNDLE"/*.metallib >/dev/null 2>&1; then
 fi
 cp "$RES_BUNDLE"/*.metallib "$APP/Contents/Resources/"
 
-MLX_METALLIB="$ROOT/.build/$CONFIG/mlx.metallib"
-if [ ! -f "$MLX_METALLIB" ]; then
-  echo "==> Building MLX metallib ($CONFIG)"
-  BUILD_DIR="$ROOT/.build" "$ROOT/.build/checkouts/speech-swift/scripts/build_mlx_metallib.sh" "$CONFIG"
-fi
+MLX_METALLIB="$ROOT/.build/mlx-metallib/mlx.metallib"
+"$ROOT/scripts/build-mlx-metallib.sh" "$MLX_METALLIB"
 if [ ! -f "$MLX_METALLIB" ]; then
   echo "!! missing $MLX_METALLIB — on-device speech features (VAD, speaker ID) would die silently" >&2
   exit 1
