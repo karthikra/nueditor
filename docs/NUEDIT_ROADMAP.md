@@ -63,8 +63,11 @@ into the editor. Full design: NUEDIT repo `docs/superpowers/specs/2026-07-24-gen
   Stage 5 (S3 archive of originals) built on this side for originals up to 5 GB: the Mac uploads
   straight to S3 on a tower-signed URL, one file at a time, refuses a file changed since it was
   hashed, and always calls `complete` so a failed upload stays retryable. Larger files wait on the
-  tower's multipart flow — see `docs/phase4/2026-11-07-archive-originals-handoff.md`. Stage 4
-  (content-addressed relink / offline UX) not started.
+  tower's multipart flow — see `docs/phase4/2026-11-07-archive-originals-handoff.md`. Stage 4 ✅ shipped: originals are found by identity, not path (same drive by volume UUID plus
+  path and size/date; any other drive only on a full SHA-256 match), relinked automatically when a
+  project opens or a drive mounts, taken offline the moment their drive unmounts, kept editable from
+  their proxies while offline, and named by drive in the export view and the `export_project` receipt.
+  Live-verified with a disk image ejected and remounted at a new mount point.
   **Live-verified 2026-11-21** on a dedicated tower test project: link → register → single-PUT archive, driven
   over MCP, with the tower reading back the footage row and S3's stored size and SHA-256 (nuhub #29/#30).
   Originals over 5 GB go up in resumable 64 MiB parts (journal per machine in Application Support); **live-
