@@ -17,8 +17,8 @@ enum BackendError: LocalizedError {
         switch self {
         case .notConfigured: "Backend not configured."
         case .transport(let message): message
-        case .unauthorized(.missingKey): "The tower needs an agent key. Add one in Settings → Backend."
-        case .unauthorized(.rejectedKey): "The tower rejected this Mac's agent key. Re-authorize this Mac in Settings → Backend."
+        case .unauthorized(.missingKey): "The tower needs an agent key. Add one in Settings → Tower."
+        case .unauthorized(.rejectedKey): "The tower rejected this Mac's agent key. Re-authorize this Mac in Settings → Tower."
         case .api(_, _, let message): message
         }
     }

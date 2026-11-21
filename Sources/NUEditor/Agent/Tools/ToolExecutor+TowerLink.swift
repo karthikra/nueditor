@@ -43,7 +43,7 @@ extension ToolExecutor {
         } else if !backend.isConfigured {
             payload["note"] = "Linked, but no tower address is configured on this Mac, so nothing can be sent yet."
         } else if backend.agentKey == nil {
-            payload["note"] = "Linked, but this Mac has no agent key for the tower, so registration will fail. Add one in Settings → Backend."
+            payload["note"] = "Linked, but this Mac has no agent key for the tower, so registration will fail. Add one in Settings → Tower."
         }
         return .ok(Self.jsonString(payload) ?? "{}")
     }
