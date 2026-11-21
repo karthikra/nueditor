@@ -67,7 +67,10 @@ into the editor. Full design: NUEDIT repo `docs/superpowers/specs/2026-07-24-gen
   (content-addressed relink / offline UX) not started.
   **Live-verified 2026-11-21** on a dedicated tower test project: link → register → single-PUT archive, driven
   over MCP, with the tower reading back the footage row and S3's stored size and SHA-256 (nuhub #29/#30).
-  Multipart (> 5 GB) is built on the tower but not yet on the Mac.
+  Originals over 5 GB go up in resumable 64 MiB parts (journal per machine in Application Support); **live-
+  verified 2026-11-21** with a 5.4 GB file cut off by a network drop at part 40 of 82, resumed after an app
+  restart under the same upload, and confirmed by the tower down to a full-object SHA-256 match (nuhub #31/#32).
+  Re-calling `tower_link` is the retry for interrupted work.
   Plan: `docs/plans/2026-08-20-edge-ingest.md`.
 - **Scriptmaker** panel (drives NUEDIT script/section/matching).
 - **Generation UI:** trigger video/image/music/VO + the gap-fill flow from the editor.
