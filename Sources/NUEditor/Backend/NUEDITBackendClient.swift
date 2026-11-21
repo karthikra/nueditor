@@ -10,16 +10,23 @@ actor NUEDITBackendClient {
 
     private let session: URLSession
     private var settings: NUEDITBackendSettings?
+    private var storedAgentKey: String?
 
     init(session: URLSession = .shared) {
         self.session = session
     }
 
     /// Re-reads Settings and the address SSOT on the next call.
-    func invalidateSettings() { settings = nil }
+    func invalidateSettings() {
+        settings = nil
+        storedAgentKey = nil
+    }
 
     /// Pins settings explicitly instead of resolving them from Settings and the address SSOT.
-    func use(_ settings: NUEDITBackendSettings) { self.settings = settings }
+    func use(_ settings: NUEDITBackendSettings) {
+        self.settings = settings
+        storedAgentKey = nil
+    }
 
     func currentSettings() async -> NUEDITBackendSettings {
         if let settings { return settings }
@@ -429,10 +436,24 @@ actor NUEDITBackendClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let agentKey = settings.agentKey {
+        if let agentKey = await agentKey(for: settings) {
             request.setValue(agentKey, forHTTPHeaderField: Self.agentKeyHeader)
         }
         return request
+    }
+
+    private func agentKey(for settings: NUEDITBackendSettings) async -> String? {
+        switch settings.agentKey {
+        case .value(let key): return key
+        case nil: return nil
+        case .stored:
+            if let storedAgentKey { return storedAgentKey }
+            let loaded = await NUEDITBackendSettingsStore.loadAgentKey()
+            // Revalidate: Settings may have changed the key while the read waited on a prompt.
+            guard self.settings == settings else { return loaded }
+            storedAgentKey = loaded
+            return loaded
+        }
     }
 
     private func data(for request: URLRequest) async throws -> (Data, URLResponse) {

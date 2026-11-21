@@ -92,7 +92,7 @@ struct OriginalArchiverMultipartTests {
             return (404, Self.json(["detail": "not stubbed"]))
         }
         let client = NUEDITBackendClient(session: StubHTTP.session())
-        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://\(towerHost)"), agentKey: "k"))
+        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://\(towerHost)"), agentKey: .value("k")))
         return Fixture(
             directory: directory, original: original, identity: identity, towerHost: towerHost, s3Host: s3Host,
             client: client, journal: ArchiveUploadJournal(directory: directory.appendingPathComponent("journal"))

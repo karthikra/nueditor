@@ -10,9 +10,15 @@ import Foundation
 struct NUEDITBackendSettings: Sendable, Equatable {
     var baseURL: URL?
     /// The per-machine key the tower mints at `POST /api/v1/agent/keys`, sent as `X-Agent-Key`.
-    var agentKey: String?
+    var agentKey: AgentKey?
 
     var isConfigured: Bool { baseURL != nil }
+
+    enum AgentKey: Sendable, Equatable {
+        /// In the Keychain; read only when a request needs it, since a read can raise an access prompt.
+        case stored
+        case value(String)
+    }
 }
 
 enum NUEDITBackendSettingsStore {
@@ -25,11 +31,19 @@ enum NUEDITBackendSettingsStore {
         defaults: UserDefaults = .standard,
         hubTOML: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".nuhandoff/hub.toml"),
-        agentKey: @Sendable () -> String? = { KeychainStore.load(account: agentKeyAccount) }
+        hasStoredAgentKey: @Sendable () -> Bool = { KeychainStore.contains(account: agentKeyAccount) }
     ) async -> NUEDITBackendSettings {
         let override = defaults.string(forKey: baseURLOverrideKey)?.trimmingCharacters(in: .whitespaces)
         let raw = (override?.isEmpty == false ? override : nil) ?? value(forKey: "api_url", in: hubTOML)
-        return NUEDITBackendSettings(baseURL: raw.flatMap(normalizedBaseURL), agentKey: agentKey())
+        return NUEDITBackendSettings(
+            baseURL: raw.flatMap(normalizedBaseURL), agentKey: hasStoredAgentKey() ? .stored : nil
+        )
+    }
+
+    /// Reads the secret itself. May block on a Keychain access prompt — call it off the main actor.
+    @concurrent
+    static func loadAgentKey() async -> String? {
+        KeychainStore.load(account: agentKeyAccount)
     }
 
     /// Stores the key, or removes it when `key` is blank.

@@ -21,9 +21,18 @@ struct NUEDITBackendSettingsTests {
             """)
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         let defaults = try #require(UserDefaults(suiteName: "test.\(UUID().uuidString)"))
-        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file, agentKey: { nil })
+        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file, hasStoredAgentKey: { false })
         #expect(settings.baseURL?.absoluteString == "http://100.96.118.41:8000")
         #expect(settings.agentKey == nil)
+    }
+
+    // Reading the secret can raise a Keychain prompt; resolving settings must only learn that it exists.
+    @Test func aStoredKeyResolvesWithoutReadingTheSecret() async throws {
+        let file = try hubTOML(#"api_url = "http://tower:8000""#)
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let defaults = try #require(UserDefaults(suiteName: "test.\(UUID().uuidString)"))
+        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file, hasStoredAgentKey: { true })
+        #expect(settings.agentKey == .stored)
     }
 
     @Test func settingsOverrideWinsOverTheSSOT() async throws {
@@ -31,7 +40,7 @@ struct NUEDITBackendSettingsTests {
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         let defaults = try #require(UserDefaults(suiteName: "test.\(UUID().uuidString)"))
         defaults.set("http://127.0.0.1:9000", forKey: NUEDITBackendSettingsStore.baseURLOverrideKey)
-        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file, agentKey: { nil })
+        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file, hasStoredAgentKey: { false })
         #expect(settings.baseURL?.absoluteString == "http://127.0.0.1:9000")
     }
 
@@ -40,7 +49,7 @@ struct NUEDITBackendSettingsTests {
         let file = try hubTOML(#"url = "http://tower:8011/mcp""#)
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         let defaults = try #require(UserDefaults(suiteName: "test.\(UUID().uuidString)"))
-        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file, agentKey: { nil })
+        let settings = await NUEDITBackendSettingsStore.resolve(defaults: defaults, hubTOML: file, hasStoredAgentKey: { false })
         #expect(settings.baseURL == nil)
         #expect(!settings.isConfigured)
     }
@@ -175,7 +184,7 @@ struct NUEDITBackendAgentKeyCheckTests {
     private func client(status: Int, body: String, agentKey: String?) async -> (NUEDITBackendClient, String) {
         let host = StubHTTP.host { _ in (status, Data(body.utf8)) }
         let client = NUEDITBackendClient(session: StubHTTP.session())
-        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://\(host)"), agentKey: agentKey))
+        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://\(host)"), agentKey: agentKey.map { .value($0) }))
         return (client, host)
     }
 
@@ -200,7 +209,7 @@ struct NUEDITBackendAgentKeyCheckTests {
 
     @Test func anUnreachableTowerLeavesTheKeyUnchecked() async {
         let client = NUEDITBackendClient()
-        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://127.0.0.1:1"), agentKey: "k-1"))
+        await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://127.0.0.1:1"), agentKey: .value("k-1")))
         guard case .unknown = await client.checkAgentKey() else {
             Issue.record("an unreachable tower must not judge the key")
             return
