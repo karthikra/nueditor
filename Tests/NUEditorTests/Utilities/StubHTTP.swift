@@ -11,18 +11,26 @@ final class StubHTTP: URLProtocol, @unchecked Sendable {
     }
 
     typealias Handler = @Sendable (URLRequest) -> (status: Int, body: Data)
+    typealias HeaderHandler = @Sendable (URLRequest) -> (status: Int, headers: [String: String], body: Data)
 
-    private static let routes = Mutex<[String: (handler: Handler, log: [Recorded])]>([:])
+    private static let routes = Mutex<[String: (handler: HeaderHandler, log: [Recorded])]>([:])
 
     /// Registers a fresh host; every request to it is answered by `handler` and recorded.
     static func host(_ handler: @escaping Handler) -> String {
         register(host: "\(UUID().uuidString.lowercased()).stub.test", handler)
     }
 
+    /// As `host(_:)`, for a stub that must also set response headers.
+    static func host(withHeaders handler: @escaping HeaderHandler) -> String {
+        let host = "\(UUID().uuidString.lowercased()).stub.test"
+        routes.withLock { $0[host] = (handler, []) }
+        return host
+    }
+
     /// For a client that builds its own host; the caller makes `host` unique to its test.
     @discardableResult
     static func register(host: String, _ handler: @escaping Handler) -> String {
-        routes.withLock { $0[host] = (handler, []) }
+        routes.withLock { $0[host] = ({ request in let (status, body) = handler(request); return (status, [:], body) }, []) }
         return host
     }
 
@@ -54,8 +62,10 @@ final class StubHTTP: URLProtocol, @unchecked Sendable {
             headers: request.allHTTPHeaderFields ?? [:], body: request.httpBody ?? Self.drain(request.httpBodyStream)
         )
         Self.routes.withLock { $0[host]?.log.append(recorded) }
-        let (status, body) = handler(request)
-        let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)!
+        var answered = request
+        answered.httpBody = recorded.body
+        let (status, headers, body) = handler(answered)
+        let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)

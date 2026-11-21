@@ -150,16 +150,14 @@ struct OriginalArchiverTests {
         #expect(f.s3Requests.isEmpty)
     }
 
-    // Presigning would strand the row in `uploading` for a file a single PUT can't carry.
-    @Test func anOversizedOriginalNeverAsksForAGrant() async throws {
+    // A single-PUT grant for a file S3 can't take in one PUT would only strand the row.
+    @Test func anOversizedOriginalGoesMultipartNotSinglePut() async throws {
         let f = try await fixture()
         defer { f.cleanUp() }
-        let outcome = await OriginalArchiver.archive(f.request(), client: f.client, singleUploadLimit: 1)
-        guard case .skipped = outcome else {
-            Issue.record("expected skipped, got \(outcome)")
-            return
-        }
-        #expect(f.towerRequests.isEmpty)
+        let journal = ArchiveUploadJournal(directory: f.directory.appendingPathComponent("journal"))
+        _ = await OriginalArchiver.archive(f.request(), client: f.client, journal: journal, singleUploadLimit: 1)
+        #expect(f.towerRequests.map(\.url.path) == ["/api/v1/footage/f-1/archive/multipart"])
+        #expect(f.s3Requests.isEmpty)
     }
 
     // Uploading changed bytes under the old checksum would make the archive lie about its contents.
