@@ -532,7 +532,7 @@ extension EditorViewModel {
         if clip.sourceClipType == .sequence {
             return timeline(for: clip.mediaRef) == nil
         }
-        return clip.mediaType != .text && isMediaOffline(clip.mediaRef)
+        return clip.mediaType != .text && isMediaOffline(clip.mediaRef) && !isPlayingFromProxy(clip.mediaRef)
     }
 
     func isClipMediaGenerating(_ clip: Clip) -> Bool {

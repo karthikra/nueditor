@@ -57,4 +57,19 @@ struct VolumeRelinkTests {
         editor.markOriginalsOffline(onVolumeAt: URL(fileURLWithPath: "/Volumes/CARD", isDirectory: true))
         #expect(editor.missingMediaRefs == [onCard.id])
     }
+
+    // Stage 4: an offline original with a proxy stays playable; only one without a proxy is missing to playback.
+    @Test func anOfflineOriginalWithAProxyPlaysFromIt() {
+        let editor = EditorViewModel()
+        let proxied = MediaAsset(url: URL(fileURLWithPath: "/Volumes/CARD/A001.mov"), type: .video, name: "A001")
+        let bare = MediaAsset(url: URL(fileURLWithPath: "/Volumes/CARD/A002.mov"), type: .video, name: "A002")
+        editor.mediaAssets = [proxied, bare]
+        editor.missingMediaRefs = [proxied.id, bare.id]
+        editor.previewProxyURLs = [proxied.id: URL(fileURLWithPath: "/tmp/proxy-a001.mp4")]
+
+        #expect(editor.playbackMissingMediaRefs == [bare.id])
+        #expect(editor.isPlayingFromProxy(proxied.id))
+        #expect(!editor.isPlayingFromProxy(bare.id))
+        #expect(editor.isMediaOffline(proxied.id))
+    }
 }

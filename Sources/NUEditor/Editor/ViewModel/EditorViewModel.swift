@@ -320,7 +320,7 @@ final class EditorViewModel {
     /// never starts one.
     @ObservationIgnored lazy var ingest = IngestCoordinator(editor: self)
     /// Preview proxies by asset id — playback only. See `playbackURLMap()`.
-    @ObservationIgnored var previewProxyURLs: [String: URL] = [:]
+    var previewProxyURLs: [String: URL] = [:]
     @ObservationIgnored var onProjectCheckpointRequired: (() -> Void)?
     @ObservationIgnored var onCancelTimelineDrag: (() -> Void)?
     var isDocumentEdited: Bool = false

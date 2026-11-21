@@ -341,7 +341,7 @@ struct PreviewContainerView: View {
                 guard clip.contains(timelineFrame: frame), clip.opacityAt(frame: frame) > 0.01 else { continue }
                 if let asset = generatingAsset(for: clip) {
                     generatingLabel = generatingLabel ?? asset.generatingLabel
-                } else if editor.isMediaOffline(clip.mediaRef) {
+                } else if editor.isMediaOffline(clip.mediaRef), !editor.isPlayingFromProxy(clip.mediaRef) {
                     offline = offline ?? clip
                 } else {
                     return .covered

@@ -290,7 +290,7 @@ final class VideoEngine {
         let generation = invalidateRebuild()
 
         let mediaURLs = editor.playbackURLMap()   // proxies where we have them; export keeps originals
-        let missingMediaRefs = editor.missingMediaRefs
+        let missingMediaRefs = editor.playbackMissingMediaRefs
         let assetSizes: [String: CGSize] = Dictionary(
             uniqueKeysWithValues: editor.mediaAssets.compactMap { asset in
                 guard let w = asset.sourceWidth, let h = asset.sourceHeight, w > 0, h > 0 else { return nil }

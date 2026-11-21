@@ -156,6 +156,8 @@ struct AssetThumbnailView: View {
                 .clipped()
             } else if case .failed(let error) = asset.generationStatus {
                 failedThumbnail(error: error)
+            } else if isMissing, editor.isPlayingFromProxy(asset.id) {
+                originalOfflineThumbnail
             } else if isMissing {
                 missingThumbnail
             } else if let thumbnail = asset.thumbnail {
@@ -293,6 +295,23 @@ struct AssetThumbnailView: View {
         .help("NUEditor couldn't load this source file. It may be missing, on an ejected drive, or unreadable.")
     }
 
+    private var originalOfflineThumbnail: some View {
+        VStack(spacing: AppTheme.Spacing.xxs) {
+            Image(systemName: "externaldrive.badge.exclamationmark")
+                .font(.system(size: AppTheme.FontSize.mdLg))
+                .foregroundStyle(AppTheme.Status.warningColor)
+            Text("Original Offline")
+                .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+        }
+        .help(originalOfflineHelp)
+    }
+
+    private var originalOfflineHelp: String {
+        let drive = asset.footageIdentity?.volumeLabel.map { "“\($0)”" } ?? "its drive"
+        return "The original is on \(drive). It plays and edits from its proxy; connect \(drive) to export it."
+    }
+
     private func formatDuration(_ seconds: Double) -> String {
         let total = Int(seconds)
         let m = total / 60
@@ -327,7 +346,7 @@ struct AssetThumbnailView: View {
     }
 
     private var borderColor: Color {
-        if isMissing { return AppTheme.Status.errorColor }
+        if isMissing { return editor.isPlayingFromProxy(asset.id) ? AppTheme.Status.warningColor : AppTheme.Status.errorColor }
         if isSwapPickMode { return isSwapPickHighlighted ? AppTheme.Accent.primary : .clear }
         return isSelected ? AppTheme.Accent.primary : .clear
     }

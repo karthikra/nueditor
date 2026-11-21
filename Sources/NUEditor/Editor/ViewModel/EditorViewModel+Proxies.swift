@@ -13,6 +13,16 @@ extension EditorViewModel {
         return map
     }
 
+    /// An offline original whose preview proxy is on disk: it plays and edits normally; only export needs the drive.
+    func isPlayingFromProxy(_ mediaRef: String) -> Bool {
+        (missingMediaRefs.contains(mediaRef) || offlineMediaRefs.contains(mediaRef)) && previewProxyURLs[mediaRef] != nil
+    }
+
+    /// What playback must treat as missing: offline originals that have no proxy to stand in.
+    var playbackMissingMediaRefs: Set<String> {
+        missingMediaRefs.filter { previewProxyURLs[$0] == nil }
+    }
+
     /// A proxy landed or went away — rebuild so playback picks it up.
     func refreshProxyPlayback() {
         videoEngine?.rebuild()
