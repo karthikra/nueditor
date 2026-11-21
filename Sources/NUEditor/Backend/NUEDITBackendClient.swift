@@ -33,8 +33,15 @@ actor NUEDITBackendClient {
     /// True when the tower answers. Never throws: reachability is a state the UI shows, not an error.
     func isReachable() async -> Bool {
         guard let request = try? await request(path: "/health", method: "GET") else { return false }
-        guard let (_, response) = try? await session.data(for: request) else { return false }
-        return (response as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+        do {
+            let (_, response) = try await session.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if !(200..<300).contains(status) { Log.app.warning("tower health HTTP \(status)") }
+            return (200..<300).contains(status)
+        } catch {
+            Log.app.warning("tower health unreachable: \(Log.detail(error))")
+            return false
+        }
     }
 
     enum AgentKeyCheck: Sendable, Equatable {
