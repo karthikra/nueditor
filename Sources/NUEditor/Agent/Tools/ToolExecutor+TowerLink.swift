@@ -21,11 +21,9 @@ extension ToolExecutor {
             changed = editor.towerProjectId != projectId
             editor.towerProjectId = projectId
         }
-        if changed {
-            editor.onProjectCheckpointRequired?()
-            // A fresh link is also the retry: footage prepared while the tower was away goes now.
-            if editor.towerProjectId != nil { editor.ingest.registerPendingFootage() }
-        }
+        if changed { editor.onProjectCheckpointRequired?() }
+        // Linking is the retry, even to the same project: anything interrupted or prepared offline goes now.
+        if projectId != nil, editor.towerProjectId != nil { editor.ingest.registerPendingFootage() }
 
         let backend = await NUEDITBackendClient.shared.currentSettings()
         var payload: [String: Any] = [

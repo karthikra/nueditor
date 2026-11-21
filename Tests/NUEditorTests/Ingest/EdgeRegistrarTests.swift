@@ -125,6 +125,20 @@ struct TowerLinkTests {
         #expect(payload?["linked"] as? Bool == true)
     }
 
+    // An interrupted archive has no other retry path; relinking the same project must restart it.
+    @Test func relinkingTheSameProjectRetriesAnUnarchivedOriginal() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline())
+        _ = try await h.runOK("tower_link", args: ["projectId": "p-1"])
+        let asset = MediaAsset(url: URL(fileURLWithPath: "/Volumes/OFFLINE-\(UUID().uuidString)/A001.mov"), type: .video, name: "A001")
+        asset.footageIdentity = FootageIdentity(checksum: "a", fileSizeBytes: 10)
+        asset.footageId = "f-a"
+        h.editor.mediaAssets.append(asset)
+
+        _ = try await h.runOK("tower_link", args: ["projectId": "p-1"])
+        let attempted = h.editor.ingest.isArchiving(assetId: asset.id) || h.editor.ingest.archiveOutcomes[asset.id] != nil
+        #expect(attempted)
+    }
+
     @Test func clearUnlinks() async throws {
         let h = ToolHarness(timeline: Fixtures.timeline())
         _ = try await h.runOK("tower_link", args: ["projectId": "p-1"])
