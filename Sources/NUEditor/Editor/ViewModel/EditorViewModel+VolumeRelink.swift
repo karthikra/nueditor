@@ -75,6 +75,25 @@ extension EditorViewModel {
         videoEngine?.rebuild()
     }
 
+    /// Which drives must be connected for `timeline` to export at full quality, by name.
+    func offlineOriginals(usedIn timeline: Timeline) -> OfflineOriginalsReport {
+        let used = Set(([timeline] + timeline.reachableTimelines(resolve: timeline(for:)))
+            .flatMap { $0.tracks.flatMap { $0.clips.map(\.mediaRef) } })
+        let offline = used.filter { missingMediaRefs.contains($0) || offlineMediaRefs.contains($0) }
+        var byDrive: [String: (uuid: String?, count: Int)] = [:]
+        var unidentified = 0
+        for ref in offline {
+            guard let label = mediaAssetsById[ref]?.footageIdentity?.volumeLabel else {
+                unidentified += 1
+                continue
+            }
+            byDrive[label, default: (mediaAssetsById[ref]?.footageIdentity?.volumeUUID, 0)].count += 1
+        }
+        let drives = byDrive.map { OfflineOriginalsReport.Drive(label: $0.key, volumeUUID: $0.value.uuid, originals: $0.value.count) }
+            .sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
+        return OfflineOriginalsReport(drives: drives, unidentified: unidentified)
+    }
+
     func startWatchingVolumes() {
         guard volumeObservers.isEmpty else { return }
         let center = NSWorkspace.shared.notificationCenter
@@ -98,5 +117,28 @@ extension EditorViewModel {
         volumeObservers = []
         identityRelinkTask?.cancel()
         identityRelinkTask = nil
+    }
+}
+
+struct OfflineOriginalsReport: Equatable, Sendable {
+    struct Drive: Equatable, Sendable {
+        let label: String
+        let volumeUUID: String?
+        let originals: Int
+    }
+
+    var drives: [Drive]
+    /// Offline media with no content identity, so no drive can be named for it.
+    var unidentified: Int
+
+    var isEmpty: Bool { drives.isEmpty && unidentified == 0 }
+
+    /// "Connect “CARD_A” (3 originals) and “CARD_B” (1 original)."
+    var summary: String {
+        var parts = drives.map { "“\($0.label)” (\($0.originals) original\($0.originals == 1 ? "" : "s"))" }
+        if unidentified > 0 { parts.append("\(unidentified) other offline file\(unidentified == 1 ? "" : "s")") }
+        guard !parts.isEmpty else { return "" }
+        let list = parts.count == 1 ? parts[0] : parts.dropLast().joined(separator: ", ") + " and " + parts[parts.count - 1]
+        return drives.isEmpty ? "Relink \(list)." : "Connect \(list)."
     }
 }

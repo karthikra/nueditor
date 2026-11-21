@@ -153,9 +153,13 @@ extension ToolExecutor {
         target: FCPXMLTarget,
         outputURL: URL
     ) throws -> ToolResult {
-        let warnings = format == .xml || format == .fcpxml
+        let offline = editor.offlineOriginals(usedIn: timeline)
+        var warnings = format == .xml || format == .fcpxml
             ? nestExportWarnings(editor, timeline: timeline)
             : []
+        if !offline.isEmpty {
+            warnings.append("Offline originals are missing from this export. \(offline.summary)")
+        }
         let submission = try exportQueue.enqueueVideo(
             timeline: timeline,
             resolver: editor.mediaResolver,
@@ -185,6 +189,16 @@ extension ToolExecutor {
             "note": "The export is available in the Export dialog.",
         ]
         if !warnings.isEmpty { payload["warnings"] = warnings }
+        if !offline.isEmpty {
+            payload["offlineOriginals"] = [
+                "drives": offline.drives.map { drive -> [String: Any] in
+                    var row: [String: Any] = ["volume": drive.label, "originals": drive.originals]
+                    if let uuid = drive.volumeUUID { row["volumeUUID"] = uuid }
+                    return row
+                },
+                "unidentified": offline.unidentified,
+            ]
+        }
         return try jsonResult(payload)
     }
 

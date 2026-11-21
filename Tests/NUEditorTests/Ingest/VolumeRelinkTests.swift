@@ -72,4 +72,27 @@ struct VolumeRelinkTests {
         #expect(!editor.isPlayingFromProxy(bare.id))
         #expect(editor.isMediaOffline(proxied.id))
     }
+
+    @Test func exportNamesEachDriveItsOfflineOriginalsAreOn() {
+        let editor = EditorViewModel()
+        func asset(_ name: String, drive: String?) -> MediaAsset {
+            let a = MediaAsset(url: URL(fileURLWithPath: "/Volumes/\(drive ?? "X")/\(name).mov"), type: .video, name: name)
+            if let drive { a.footageIdentity = FootageIdentity(checksum: name, fileSizeBytes: 1, volumeUUID: "uuid-\(drive)", volumeLabel: drive) }
+            return a
+        }
+        let a1 = asset("A001", drive: "CARD_A"), a2 = asset("A002", drive: "CARD_A")
+        let b1 = asset("B001", drive: "CARD_B"), loose = asset("L001", drive: nil), online = asset("C001", drive: "CARD_C")
+        let unused = asset("Z001", drive: "CARD_Z")
+        editor.mediaAssets = [a1, a2, b1, loose, online, unused]
+        editor.missingMediaRefs = [a1.id, a2.id, b1.id, loose.id, unused.id]
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [a1, a2, b1, loose, online].enumerated().map {
+            Fixtures.clip(mediaRef: $0.element.id, start: $0.offset * 10, duration: 10)
+        })])
+
+        let report = editor.offlineOriginals(usedIn: timeline)
+        #expect(report.drives.map(\.label) == ["CARD_A", "CARD_B"])
+        #expect(report.drives.map(\.originals) == [2, 1])
+        #expect(report.unidentified == 1)
+        #expect(report.summary == "Connect “CARD_A” (2 originals), “CARD_B” (1 original) and 1 other offline file.")
+    }
 }

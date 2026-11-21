@@ -148,6 +148,14 @@ struct ExportView: View {
                     }
                 }
 
+                if destination != .nueditorProject, !offlineOriginals.isEmpty {
+                    Text("\(offlineOriginals.summary) Until then they're missing from this export.")
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Status.warningColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, AppTheme.Spacing.sm)
+                }
+
                 if let submissionError {
                     Text(submissionError)
                         .font(.system(size: AppTheme.FontSize.xs))
@@ -160,6 +168,10 @@ struct ExportView: View {
             .padding(AppTheme.Spacing.xl)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var offlineOriginals: OfflineOriginalsReport {
+        editor.offlineOriginals(usedIn: exportTimeline)
     }
 
     private var destinationPicker: some View {
