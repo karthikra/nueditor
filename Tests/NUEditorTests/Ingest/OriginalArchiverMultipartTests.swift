@@ -163,7 +163,7 @@ struct OriginalArchiverMultipartTests {
     @Test func anUploadS3NoLongerHoldsIsForgotten() async throws {
         let f = try await fixture(failingPart: (1, 404, "NoSuchUpload"))
         defer { f.cleanUp() }
-        guard case .failed = await f.archive() else {
+        guard case .interrupted = await f.archive() else {
             Issue.record("a vanished upload must fail this pass")
             return
         }

@@ -183,14 +183,15 @@ struct OriginalArchiverTests {
         #expect(f.towerRequests.isEmpty)
     }
 
-    @Test func anUnreachableTowerSkips() async throws {
+    // Interrupted, not skipped: only an interruption is retried automatically.
+    @Test func anUnreachableTowerIsAnInterruption() async throws {
         let f = try await fixture()
         defer { f.cleanUp() }
         let client = NUEDITBackendClient()
         // Port 1 refuses immediately: a transport failure, not an API rejection.
         await client.use(NUEDITBackendSettings(baseURL: URL(string: "http://127.0.0.1:1"), agentKey: nil))
-        guard case .skipped = await OriginalArchiver.archive(f.request(), client: client) else {
-            Issue.record("an unreachable tower must skip")
+        guard case .interrupted = await OriginalArchiver.archive(f.request(), client: client) else {
+            Issue.record("an unreachable tower must be an interruption")
             return
         }
     }

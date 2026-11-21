@@ -23,9 +23,11 @@ enum OriginalArchiver {
         case archived(uri: String)
         /// The tower already holds it; the URI isn't returned on this path.
         case alreadyArchived
-        /// Nothing went wrong, but nothing was archived: tower away, opted out, drive unmounted,
-        /// or interrupted mid-upload. Safe to retry later; a multipart upload resumes.
+        /// Nothing was archived and retrying soon won't change that: opted out, drive unmounted,
+        /// no tower configured, or cancelled. Retried when the situation changes (relink, reopen).
         case skipped(String)
+        /// The network, the tower, or S3 dropped out. Retried automatically; a multipart upload resumes.
+        case interrupted(String)
         case failed(String)
     }
 
@@ -140,7 +142,7 @@ enum OriginalArchiver {
                 try await journal.save(entry)
             } catch BackendError.api(_, "NoSuchUpload", _) {
                 await discard(footageId: footageId, journal: journal)
-                return .failed("S3 no longer holds the upload; the next pass starts it again.")
+                return .interrupted("S3 no longer holds the upload; it starts again.")
             } catch {
                 return outcome(for: error)
             }
@@ -254,7 +256,7 @@ enum OriginalArchiver {
         if error is CancellationError { return .skipped("Cancelled.") }
         if let error = error as? BackendError {
             switch error {
-            case .transport(let message): return .skipped(message)
+            case .transport(let message): return .interrupted(message)
             case .notConfigured: return .skipped("No tower configured.")
             case .unauthorized, .api: return .failed(error.localizedDescription)
             }

@@ -17,6 +17,19 @@ final class IngestCoordinator {
     private let archiveGate = AsyncSemaphore(value: 1)
     /// Last archive result per asset this session — what `tower_link` reports.
     private(set) var archiveOutcomes: [String: OriginalArchiver.Outcome] = [:]
+    /// Pending automatic retries of interrupted archives, and how many in a row each has had.
+    private var archiveRetries: [String: Task<Void, Never>] = [:]
+    private var archiveRetryAttempts: [String: Int] = [:]
+
+    var archiveFile: @Sendable (OriginalArchiver.Request) async -> OriginalArchiver.Outcome = {
+        await OriginalArchiver.archive($0)
+    }
+    var archiveRetryDelay: @Sendable (Int) -> Duration = { IngestCoordinator.archiveRetryDelay(afterAttempt: $0) }
+
+    /// 30 s, then doubling to a 10-minute ceiling: a dropped link recovers fast, an outage costs little.
+    nonisolated static func archiveRetryDelay(afterAttempt attempt: Int) -> Duration {
+        .seconds(min(30 << min(max(attempt - 1, 0), 5), 600))
+    }
 
     init(editor: EditorViewModel) {
         self.editor = editor
@@ -44,6 +57,8 @@ final class IngestCoordinator {
     func cancel(assetId: String) {
         work.removeValue(forKey: assetId)?.cancel()
         archiveWork.removeValue(forKey: assetId)?.cancel()
+        archiveRetries.removeValue(forKey: assetId)?.cancel()
+        archiveRetryAttempts[assetId] = nil
     }
 
     /// Quit, close, or project switch: stop hashing, leave no half state behind.
@@ -52,6 +67,14 @@ final class IngestCoordinator {
         work.removeAll()
         for task in archiveWork.values { task.cancel() }
         archiveWork.removeAll()
+        for task in archiveRetries.values { task.cancel() }
+        archiveRetries.removeAll()
+        archiveRetryAttempts.removeAll()
+    }
+
+    /// A reopened project picks up where the last session stopped: unsent footage and unfinished archives.
+    func resumeAfterRestore() {
+        registerPendingFootage()
     }
 
     private func identify(assetId: String) async {
@@ -207,26 +230,51 @@ final class IngestCoordinator {
               asset.originalArchiveURI == nil, archiveOutcomes[assetId] != .alreadyArchived,
               let footageId = asset.footageId, let identity = asset.footageIdentity else { return }
         let url = asset.url
+        archiveRetries.removeValue(forKey: assetId)?.cancel()
         archiveWork[assetId] = Task { @MainActor [weak self] in
-            defer { self?.archiveWork[assetId] = nil }
-            await self?.archive(assetId: assetId, footageId: footageId, identity: identity, originalURL: url)
+            let outcome = await self?.archive(assetId: assetId, footageId: footageId, identity: identity, originalURL: url)
+            guard let self else { return }
+            self.archiveWork[assetId] = nil
+            // Schedule only once this pass is no longer in flight, or the retry would see it busy and drop.
+            if case .interrupted? = outcome, !Task.isCancelled { self.scheduleArchiveRetry(assetId: assetId) }
+        }
+    }
+
+    private func scheduleArchiveRetry(assetId: String) {
+        let attempt = (archiveRetryAttempts[assetId] ?? 0) + 1
+        archiveRetryAttempts[assetId] = attempt
+        let delay = archiveRetryDelay(attempt)
+        Log.project.info("archive retry asset=\(assetId.prefix(8)) attempt=\(attempt) in=\(delay)")
+        archiveRetries[assetId]?.cancel()
+        archiveRetries[assetId] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.archiveRetries[assetId] = nil
+            self.archiveOriginal(assetId: assetId)
         }
     }
 
     func isArchiving(assetId: String) -> Bool { archiveWork[assetId] != nil }
 
-    private func archive(assetId: String, footageId: String, identity: FootageIdentity, originalURL: URL) async {
-        guard (try? await archiveGate.wait()) != nil else { return }
+    /// The pass in flight and the retry waiting, so a caller can await each step.
+    func archiveTask(assetId: String) -> Task<Void, Never>? { archiveWork[assetId] }
+    func pendingArchiveRetry(assetId: String) -> Task<Void, Never>? { archiveRetries[assetId] }
+
+    private func archive(
+        assetId: String, footageId: String, identity: FootageIdentity, originalURL: URL
+    ) async -> OriginalArchiver.Outcome? {
+        guard (try? await archiveGate.wait()) != nil else { return nil }
         defer { Task { await archiveGate.signal() } }
         guard !Task.isCancelled, let live = current(assetId: assetId), live.url == originalURL,
-              live.footageId == footageId, live.originalArchiveURI == nil else { return }
+              live.footageId == footageId, live.originalArchiveURI == nil else { return nil }
 
-        let outcome = await OriginalArchiver.archive(
+        let outcome = await archiveFile(
             OriginalArchiver.Request(footageId: footageId, originalURL: originalURL, identity: identity)
         )
         archiveOutcomes[assetId] = outcome
+        if case .interrupted = outcome {} else { archiveRetryAttempts[assetId] = nil }
         guard let editor, let settled = current(assetId: assetId), settled.url == originalURL,
-              settled.footageId == footageId else { return }
+              settled.footageId == footageId else { return nil }
         switch outcome {
         case .archived(let uri):
             settled.originalArchiveURI = uri
@@ -236,9 +284,12 @@ final class IngestCoordinator {
             Log.project.info("archive already held asset=\(assetId.prefix(8)) footage=\(footageId)")
         case .skipped(let reason):
             Log.project.info("archive skipped asset=\(assetId.prefix(8)): \(reason)")
+        case .interrupted(let reason):
+            Log.project.info("archive interrupted asset=\(assetId.prefix(8)): \(reason)")
         case .failed(let message):
             Log.project.warning("archive failed asset=\(assetId.prefix(8)) footage=\(footageId): \(message)")
         }
+        return outcome
     }
 
     /// Audio-only footage has no picture to proxy; video gets all three.

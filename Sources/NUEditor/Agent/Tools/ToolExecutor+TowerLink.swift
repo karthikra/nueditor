@@ -68,6 +68,9 @@ extension ToolExecutor {
             case .skipped(let reason):
                 waiting += 1
                 issues.append(["assetId": asset.id, "name": asset.name, "state": "waiting", "reason": reason])
+            case .interrupted(let reason):
+                waiting += 1
+                issues.append(["assetId": asset.id, "name": asset.name, "state": "retrying", "reason": reason])
             case .archived, .alreadyArchived, nil:
                 waiting += 1
             }
