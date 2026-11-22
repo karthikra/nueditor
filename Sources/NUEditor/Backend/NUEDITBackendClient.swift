@@ -427,7 +427,7 @@ actor NUEDITBackendClient {
     /// The tower's fixed 401 detail for a bad, revoked, or orphaned key (`views/v1/auth.py`).
     static let agentKeyInvalidDetail = "Invalid agent key"
 
-    private func request(path: String, method: String) async throws -> URLRequest {
+    func request(path: String, method: String) async throws -> URLRequest {
         let settings = await currentSettings()
         guard let baseURL = settings.baseURL else { throw BackendError.notConfigured }
         guard let url = URL(string: baseURL.absoluteString + path) else {
@@ -456,7 +456,7 @@ actor NUEDITBackendClient {
         }
     }
 
-    private func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
         do {
             return try await session.data(for: request)
         } catch let error as CancellationError {
@@ -466,7 +466,7 @@ actor NUEDITBackendClient {
         }
     }
 
-    private func upload(_ request: URLRequest, fromFile url: URL) async throws -> (Data, URLResponse) {
+    func upload(_ request: URLRequest, fromFile url: URL) async throws -> (Data, URLResponse) {
         do {
             return try await session.upload(for: request, fromFile: url)
         } catch let error as CancellationError {
@@ -486,9 +486,9 @@ actor NUEDITBackendClient {
         }
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+    func decode<T: Decodable>(_ type: T.Type, from data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> T {
         do {
-            return try JSONDecoder().decode(type, from: data)
+            return try decoder.decode(type, from: data)
         } catch {
             throw BackendError.transport("The tower returned a response this build can't read: \(error.localizedDescription)")
         }
@@ -505,15 +505,23 @@ actor NUEDITBackendClient {
         }
         throw BackendError.api(
             status: http.statusCode,
-            code: "http_\(http.statusCode)",
+            code: detailCode(from: data) ?? "http_\(http.statusCode)",
             message: detail(from: data) ?? "The tower returned HTTP \(http.statusCode)."
         )
+    }
+
+    /// The stable machine code in a `{"detail": {"code": …, "message": …}}` error, when the tower sends one.
+    static func detailCode(from data: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let detail = object["detail"] as? [String: Any] else { return nil }
+        return detail["code"] as? String
     }
 
     static func detail(from data: Data) -> String? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let detail = object["detail"] else { return nil }
         if let text = detail as? String { return text }
+        if let structured = detail as? [String: Any], let message = structured["message"] as? String { return message }
         // Validation errors arrive as a list of {loc, msg, type}.
         if let items = detail as? [[String: Any]] {
             let messages = items.compactMap { $0["msg"] as? String }

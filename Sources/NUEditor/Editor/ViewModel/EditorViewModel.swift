@@ -132,6 +132,7 @@ final class EditorViewModel {
     var isScrubbing: Bool = false
     var toolMode: ToolMode = .pointer
     var showExportDialog: Bool = false
+    var showScriptImport: Bool = false
     var showGenerationPanel: Bool = false {
         didSet {
             if showGenerationPanel && !oldValue { showMediaPanelMediaTab() } else if !showGenerationPanel && oldValue { clearPendingGenerationPanelState() }

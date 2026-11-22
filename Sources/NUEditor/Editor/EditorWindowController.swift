@@ -275,6 +275,10 @@ extension EditorWindowController: EditorActions {
         editorViewModel.showExportDialog = true
     }
 
+    @objc func showScriptImport(_ sender: Any?) {
+        editorViewModel.showScriptImport = true
+    }
+
     @objc func copy(_ sender: Any?) {
         guard canHandleClipboardShortcut(),
               !editorViewModel.selectedClipIds.isEmpty else { return }

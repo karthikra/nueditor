@@ -46,6 +46,7 @@ enum MainMenuBuilder {
         let importItem = NSMenuItem(title: "Import Media…", action: #selector(EditorActions.importMedia(_:)), keyEquivalent: "i")
         importItem.keyEquivalentModifierMask = [.command]
         menu.addItem(importItem)
+        menu.addItem(withTitle: "Import Script…", action: #selector(EditorActions.showScriptImport(_:)), keyEquivalent: "")
 
         menu.addItem(.separator())
 
@@ -185,6 +186,7 @@ enum MainMenuBuilder {
     func rippleDeleteSelected(_ sender: Any?)
     func importMedia(_ sender: Any?)
     func showExport(_ sender: Any?)
+    func showScriptImport(_ sender: Any?)
     func toggleMediaPanel(_ sender: Any?)
     func toggleInspectorPanel(_ sender: Any?)
     func toggleAgentPanel(_ sender: Any?)

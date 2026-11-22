@@ -440,6 +440,10 @@ final class VideoProject: NSDocument {
                 ExportView()
                     .environment(editorViewModel)
             }
+            .sheet(isPresented: Bindable(editorViewModel).showScriptImport) { [editorViewModel] in
+                ScriptImportView()
+                    .environment(editorViewModel)
+            }
             .sheet(item: Bindable(editorViewModel).pendingSettingsMismatch) { [editorViewModel] mismatch in
                 ProjectSettingsMismatchView(mismatch: mismatch)
                     .environment(editorViewModel)

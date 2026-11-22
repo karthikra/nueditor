@@ -354,6 +354,15 @@ enum AppTheme {
         static let contextRowHeight: CGFloat = IconSize.md
     }
 
+    enum ScriptImport {
+        static let sheetMinWidth: CGFloat = 640
+        static let sheetIdealWidth: CGFloat = 720
+        static let sheetMinHeight: CGFloat = 520
+        static let sheetIdealHeight: CGFloat = 600
+        static let beatLabelWidth: CGFloat = 36
+        static let rolePickerWidth: CGFloat = 180
+    }
+
     enum Export {
         static let sheetWidth: CGFloat = 600
         static let sheetHeight: CGFloat = 600
