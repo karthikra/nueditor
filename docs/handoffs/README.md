@@ -88,6 +88,7 @@ There is no tower-side equivalent: the tower has no copy of this repo.
 
 | Date | Thread | Request (tower) | Reply (editor) | Status |
 |---|---|---|---|---|
+| 2026-11-22 | Storyboard: import AV scripts (Google Sheets / Docs / CSV), board read model | — | `docs/phase4/2026-11-22-storyboard-script-import-handoff.md` (editor→tower) | ⏳ sent; awaiting endpoint shapes, Google access choice |
 | 2026-11-07 | Archive camera originals to S3 (Stage 5) | — | `docs/phase4/2026-11-07-archive-originals-handoff.md` (editor→tower) | ✅ delivered (#19, archived `nuedit` `8896088`); all four asks built in `nuedit` `c9fc6ff` / `38253e5` / `1fcef37` (board #3). Editor on X-Agent-Key in `9dfb78b`. Live runs verified both sides 2026-11-21: single PUT (#29/#30) and 5.4 GB multipart with resume (#31/#32) |
 | 2026-08-21 | One source of truth for the nuhub address (config-drift fix) | — | `docs/phase4/2026-08-21-nuhub-config-ssot-handoff.md` (editor→tower) | ✅ superseded 2026-11-14: the nuhub plugin now supplies the address; generator, `.mcp.json` and SessionStart check removed |
 | 2026-08-21 | Fractional fps shipped, edge ingest built, transcript ownership | nuhub #10/#11/#14/#15 (tower→editor asks) | `docs/phase4/2026-08-21-fractional-fps-shipped-and-edge-ingest.md` | ✅ delivered (#20 → reply #23, archived `8896088`). Open on the tower: conform still reads integer fps, not `fpsRational` |
