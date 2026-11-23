@@ -354,6 +354,13 @@ enum AppTheme {
         static let contextRowHeight: CGFloat = IconSize.md
     }
 
+    enum Storyboard {
+        static let cardFrameHeight: CGFloat = 108
+        static let matchThumbWidth: CGFloat = 64
+        static let matchThumbHeight: CGFloat = 36
+        static let beatLabelWidth: CGFloat = 32
+    }
+
     enum ScriptImport {
         static let sheetMinWidth: CGFloat = 640
         static let sheetIdealWidth: CGFloat = 720

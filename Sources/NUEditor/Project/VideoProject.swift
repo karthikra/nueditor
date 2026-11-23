@@ -396,6 +396,7 @@ final class VideoProject: NSDocument {
         // Hashing a card can run for minutes; a closed project must not keep reading its drive.
         editorViewModel.ingest.cancelAll()
         editorViewModel.stopWatchingVolumes()
+        editorViewModel.storyboard.cancelAll()
         editorViewModel.releaseProxyPins()
         super.close()
         DispatchQueue.main.async {

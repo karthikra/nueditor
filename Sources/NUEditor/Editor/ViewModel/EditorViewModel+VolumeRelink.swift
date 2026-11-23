@@ -75,6 +75,11 @@ extension EditorViewModel {
         videoEngine?.rebuild()
     }
 
+    /// The editor asset holding the footage NUEDIT knows by this id, if it's in this project.
+    func asset(forFootageId footageId: String) -> MediaAsset? {
+        mediaAssets.first { $0.footageId == footageId }
+    }
+
     /// Which drives must be connected for `timeline` to export at full quality, by name.
     func offlineOriginals(usedIn timeline: Timeline) -> OfflineOriginalsReport {
         let used = Set(([timeline] + timeline.reachableTimelines(resolve: timeline(for:)))

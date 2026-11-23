@@ -221,7 +221,11 @@ struct ScriptImportView: View {
             case .failed:
                 Button("Back") { model.backToReview() }.keyboardShortcut(.cancelAction)
             case .done:
-                Button("Done") { editor.showScriptImport = false }.keyboardShortcut(.defaultAction)
+                Button("Done") {
+                    editor.showScriptImport = false
+                    editor.storyboard.reload()
+                }
+                .keyboardShortcut(.defaultAction)
             }
         }
     }
