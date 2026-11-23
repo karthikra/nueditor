@@ -23,13 +23,13 @@ plain editor; NUEDIT adds the intelligence NUEditor lacks (A-roll/B-roll, script
   │  MCP client → NUEditor (services/palmier)  │  via    │                                          │
   └───────┬───────────────┬──────────────┬─────┘  SSH    └────────────────────┬─────────────────────┘
           │               │              │      tunnel                        │
-   captioner :8001   S3 nuedit-media   Bedrock / fal.ai / Modal        (Tailscale mesh + SSH -L
+   captioner :8200   S3 nuedit-media   Bedrock / fal.ai / Modal        (Tailscale mesh + SSH -L
    (VLM, shared        (footage +      (LLM reasoning /                 19789: tower localhost →
     with NUVault)       proxies)        generation compute)             Mac loopback)
 ```
 
 - **Tower** runs the whole NUEDIT service, Postgres, and the in-process ML (BGE embedder + MiniLM
-  cross-encoder + Light-ASD on GPU 1). The **VLM captioner** (`:8001`) is a separate service on the
+  cross-encoder + Light-ASD on GPU 1). The **VLM captioner** (`:8200`, qwen-vlm, internal to the tower) is a separate service on the
   tower, **shared with NUVault** — don't restart casually.
 - **S3** (`nuedit-media`) holds footage originals + proxies (`STORAGE_BACKEND=s3`).
 - **External compute**: AWS **Bedrock** (Claude, `ap-south-2`) for heavy reasoning; **fal.ai** /
@@ -46,7 +46,7 @@ Status: ✅ works now · 🔧 to build.
 | Capability | Runs where | Owner | Status |
 |---|---|---|---|
 | Footage ingest, proxy gen, S3 storage | Tower | NUEDIT | ✅ |
-| VLM captioning (shot description) | Tower `:8001` | NUEDIT | ✅ |
+| VLM captioning (shot description) | Tower `:8200` (qwen-vlm) | NUEDIT | ✅ |
 | Transcript (batch, faster-whisper) | Tower | NUEDIT | ✅ |
 | Semantic search (BGE + cross-encoder) | Tower | NUEDIT | ✅ |
 | A-roll/B-roll classify (rules + **Light-ASD**) | Tower (GPU) | NUEDIT | ✅ (activated) |
