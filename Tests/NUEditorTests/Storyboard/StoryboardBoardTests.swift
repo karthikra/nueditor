@@ -10,6 +10,18 @@ private final class FakeTower: Sendable {
     private let state = Mutex<(calls: [Call], matchEvents: [Data], recaptionEvents: [Data], recaptionStatus: String)>(
         ([], [], [], "queued")
     )
+    private let fileSourced = Mutex(false)
+
+    func makeFileSourced() { fileSourced.withLock { $0 = true } }
+
+    static var refreshReport: [String: Any] { [
+        "script_id": "s-1", "dry_run": true, "added": 1, "changed": 1, "unchanged": 1, "removed": 1,
+        "beats": [["order": 1, "label": "1", "status": "unchanged", "section_id": "b-1", "changes": [], "paired_by": "text", "text_similarity": 1.0],
+                  ["order": 2, "label": "2", "status": "changed", "section_id": "b-2", "changes": ["visual"], "paired_by": "similar", "text_similarity": 0.8],
+                  ["order": 3, "label": "2A", "status": "added", "section_id": NSNull(), "changes": [], "paired_by": NSNull(), "text_similarity": NSNull()]],
+        "removed_beats": [["section_id": "b-3", "order": 3, "label": "3", "visual": "", "matches_lost": 0, "overrides_lost": 1]],
+        "rematch": ["b-2", "b-new"], "warnings": [],
+    ] }
 
     private static func encode(_ events: [[String: Any]]) -> [Data] { events.map { json($0) } }
     private static func decode(_ events: [Data]) -> [[String: Any]] {
@@ -82,6 +94,12 @@ private final class FakeTower: Sendable {
         case ("GET", "/api/v1/projects/p-1/scripts"):
             return (200, Self.json([["id": "s-0", "title": "Old cut", "active_iteration": "v1", "created_at": "2026-11-20"],
                                     ["id": "s-1", "title": "Denim 30s", "active_iteration": "v1", "created_at": "2026-11-23"]]))
+        case ("POST", "/api/v1/scripts/s-1/refresh"):
+            let multipart = request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/") == true
+            if fileSourced.withLock({ $0 }), !multipart {
+                return (422, Self.json(["detail": ["code": "file_required", "message": "Send the revised file."]]))
+            }
+            return (200, Self.json(Self.refreshReport))
         case ("GET", "/api/v1/scripts/s-1/board"):
             return (200, Self.json(Self.board()))
         case ("POST", "/api/v1/scripts/s-1/board/overrides"):
@@ -240,5 +258,69 @@ struct StoryboardModelTests {
         model.recaption()
         #expect(tower.calls.isEmpty)
         #expect(model.status == .idle)
+    }
+
+    @Test func refreshShowsWhatWouldChangeBeforeApplying() async throws {
+        let tower = FakeTower()
+        let model = await model(tower)
+        model.reload()
+        await settle(model)
+
+        model.previewRefresh()
+        await settle(model)
+        guard case .review(let report, nil) = model.refresh else {
+            Issue.record("expected a review, got \(model.refresh)")
+            return
+        }
+        #expect(report.changed == 1 && report.added == 1 && report.removed == 1)
+        #expect(report.removedBeats.first?.overridesLost == 1)
+        let preview = try #require(tower.calls.last { $0.path.hasSuffix("/refresh") })
+        #expect((try? JSONSerialization.jsonObject(with: preview.body ?? Data())) as? [String: Bool] == ["dry_run": true])
+
+        model.applyRefresh()
+        await settle(model)
+        #expect(model.refresh == .none)
+        #expect(model.message == "2 beats changed. Run matching to match them again.")
+        #expect(tower.calls.filter { $0.path.hasSuffix("/refresh") }.count == 2)
+        #expect(tower.calls.last?.path == "/api/v1/scripts/s-1/board")
+    }
+
+    // A script imported from a file can only be refreshed with the revised file.
+    @Test func aFileSourcedScriptAsksForTheRevisedFile() async throws {
+        let tower = FakeTower()
+        tower.makeFileSourced()
+        let model = await model(tower)
+        model.reload()
+        await settle(model)
+
+        model.previewRefresh()
+        await settle(model)
+        #expect(model.refresh == .needsFile)
+
+        let dir = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let revised = dir.appendingPathComponent("script-v4.csv")
+        try Data("#,Video\n1,Close on denim\n".utf8).write(to: revised)
+        model.previewRefresh(file: revised)
+        await settle(model)
+        guard case .review(_, let file?) = model.refresh else {
+            Issue.record("expected a review of the file, got \(model.refresh)")
+            return
+        }
+        #expect(file == revised)
+    }
+
+    @Test func aBeatTheScriptChangedReadsAsUnmatched() async throws {
+        let data = FakeTower.json(FakeTower.board())
+        var object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var beats = try #require(object["beats"] as? [[String: Any]])
+        beats[0]["matched"] = false
+        object["beats"] = beats
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let board = try decoder.decode(NUEDITBackendClient.Board.self, from: FakeTower.json(object))
+        #expect(board.beats[0].matched == false)
+        #expect(board.beats[1].matched == nil)
     }
 }

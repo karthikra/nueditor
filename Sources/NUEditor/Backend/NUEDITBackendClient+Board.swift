@@ -56,6 +56,8 @@ extension NUEDITBackendClient {
             let coverage: Coverage
             let bestConfidence: Double?
             let matches: [Match]
+            /// False after a refresh changed the beat, until matching runs again; nil from older towers.
+            let matched: Bool?
 
             var id: String { sectionId }
         }
@@ -160,6 +162,69 @@ extension NUEDITBackendClient {
 
     func recaptionProgress(projectId: String, since: Int) async throws -> JobProgress {
         try await get("/api/v1/projects/\(projectId)/recaption_webhooks?since_sequence=\(since)", as: JobProgress.self)
+    }
+
+    // MARK: - Refresh
+
+    /// What a refresh did, or would do on a dry run, to the script's beats.
+    struct RefreshReport: Decodable, Sendable, Equatable {
+        struct BeatChange: Decodable, Sendable, Equatable {
+            /// `added`, `changed`, or `unchanged`.
+            let status: String
+            let order: Int
+            let label: String?
+            let sectionId: String?
+            let changes: [String]
+        }
+
+        struct RemovedBeat: Decodable, Sendable, Equatable {
+            let sectionId: String
+            let order: Int
+            let label: String?
+            let visual: String?
+            let matchesLost: Int
+            let overridesLost: Int
+        }
+
+        let dryRun: Bool
+        let added: Int
+        let changed: Int
+        let unchanged: Int
+        let removed: Int
+        let beats: [BeatChange]
+        let removedBeats: [RemovedBeat]
+        /// Beats left without matches until matching runs again.
+        let rematch: [String]
+        let warnings: [String]
+    }
+
+    /// Re-reads the script's source and updates its beats in place. A linked Google source needs no
+    /// file; a script imported from a file needs the revised file, else the tower answers `file_required`.
+    func refreshScript(
+        scriptId: String, file: URL?, dryRun: Bool, stagingDirectory: URL = FileManager.default.temporaryDirectory
+    ) async throws -> RefreshReport {
+        let path = "/api/v1/scripts/\(scriptId)/refresh"
+        var request = try await request(path: path, method: "POST")
+        let response: (Data, URLResponse)
+        if let file {
+            guard let contentType = ScriptSource.file(file).fileContentType else {
+                throw BackendError.api(status: 0, code: "unsupported_format", message: "Choose a .csv, .xlsx, or .html file.")
+            }
+            let body = try MultipartFormData.write(
+                fields: ["dry_run": dryRun ? "true" : "false"],
+                files: [.init(name: "file", filename: file.lastPathComponent, contentType: contentType, fileURL: file)],
+                in: stagingDirectory
+            )
+            defer { try? FileManager.default.removeItem(at: body.fileURL) }
+            request.setValue(body.contentType, forHTTPHeaderField: "Content-Type")
+            response = try await upload(request, fromFile: body.fileURL)
+        } else {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["dry_run": dryRun])
+            response = try await data(for: request)
+        }
+        try Self.validate(response: response.1, data: response.0)
+        return try decode(RefreshReport.self, from: response.0, decoder: Self.snakeCaseDecoder)
     }
 
     // MARK: - Plumbing

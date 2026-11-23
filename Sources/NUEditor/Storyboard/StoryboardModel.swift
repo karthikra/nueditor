@@ -23,7 +23,18 @@ final class StoryboardModel {
         case recaptioning(done: Int, total: Int)
     }
 
+    enum Refresh: Equatable {
+        case none
+        /// Reading the source again on a dry run.
+        case previewing
+        /// The script came from a file: the tower needs the revised one.
+        case needsFile
+        case review(NUEDITBackendClient.RefreshReport, file: URL?)
+        case applying
+    }
+
     private(set) var scripts: [NUEDITBackendClient.ScriptSummary] = []
+    private(set) var refresh: Refresh = .none
     private(set) var selectedScriptId: String?
     private(set) var board: Board?
     private(set) var status: Status = .idle
@@ -40,6 +51,7 @@ final class StoryboardModel {
     private var loadWork: Task<Void, Never>?
     private var jobWork: Task<Void, Never>?
     private var correctionWork: Task<Void, Never>?
+    private var refreshWork: Task<Void, Never>?
 
     init(client: NUEDITBackendClient = .shared, projectId: @escaping @MainActor () -> String?) {
         self.client = client
@@ -142,6 +154,59 @@ final class StoryboardModel {
         }
     }
 
+    // MARK: - Refresh from source
+
+    /// Dry-runs a refresh so the user sees what would change before anything does.
+    func previewRefresh(file: URL? = nil) {
+        guard let scriptId = selectedScriptId else { return }
+        message = nil
+        refresh = .previewing
+        refreshWork?.cancel()
+        refreshWork = Task { @MainActor [weak self, client] in
+            do {
+                let report = try await client.refreshScript(scriptId: scriptId, file: file, dryRun: true)
+                guard let self, !Task.isCancelled, self.selectedScriptId == scriptId else { return }
+                self.refresh = .review(report, file: file)
+            } catch BackendError.api(_, "file_required", _) {
+                guard let self, !Task.isCancelled else { return }
+                self.refresh = .needsFile
+            } catch is CancellationError {
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.refresh = .none
+                self.message = error.localizedDescription
+            }
+        }
+    }
+
+    /// Applies the refresh the user reviewed, then reloads the board.
+    func applyRefresh() {
+        guard case .review(_, let file) = refresh, let scriptId = selectedScriptId else { return }
+        refresh = .applying
+        refreshWork = Task { @MainActor [weak self, client] in
+            do {
+                let report = try await client.refreshScript(scriptId: scriptId, file: file, dryRun: false)
+                guard let self, !Task.isCancelled else { return }
+                self.refresh = .none
+                self.reload()
+                if !report.rematch.isEmpty {
+                    self.message = "\(report.rematch.count) beat\(report.rematch.count == 1 ? "" : "s") changed. Run matching to match \(report.rematch.count == 1 ? "it" : "them") again."
+                }
+            } catch is CancellationError {
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.refresh = .none
+                self.message = error.localizedDescription
+            }
+        }
+    }
+
+    func dismissRefresh() {
+        refreshWork?.cancel()
+        refreshWork = nil
+        refresh = .none
+    }
+
     // MARK: - Jobs
 
     /// Matches every beat to the project's footage, then reloads the board.
@@ -159,8 +224,9 @@ final class StoryboardModel {
                 } failedEvent: { $0 == "match_failed" }
                 guard let self, !Task.isCancelled else { return }
                 self.job = .none
-                if let failure { self.message = "Matching failed: \(failure)" }
+                // reload() clears the message, so say what happened after it starts.
                 self.reload()
+                if let failure { self.message = "Matching failed: \(failure)" }
             } catch is CancellationError {
             } catch {
                 guard let self, !Task.isCancelled else { return }
@@ -245,6 +311,9 @@ final class StoryboardModel {
         loadWork?.cancel()
         jobWork?.cancel()
         correctionWork?.cancel()
+        refreshWork?.cancel()
+        refreshWork = nil
+        refresh = .none
         loadWork = nil
         jobWork = nil
         correctionWork = nil
@@ -252,5 +321,5 @@ final class StoryboardModel {
     }
 
     /// The request or job in flight, so a caller can await it.
-    var pendingWork: [Task<Void, Never>] { [loadWork, jobWork, correctionWork].compactMap { $0 } }
+    var pendingWork: [Task<Void, Never>] { [loadWork, jobWork, correctionWork, refreshWork].compactMap { $0 } }
 }

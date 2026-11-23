@@ -19,6 +19,9 @@ struct StoryboardTab: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear { if model.status == .idle { model.reload() } }
+        .sheet(isPresented: Binding(get: { model.refresh != .none }, set: { if !$0 { model.dismissRefresh() } })) {
+            StoryboardRefreshView(model: model)
+        }
     }
 
     // MARK: - Header
@@ -40,6 +43,10 @@ struct StoryboardTab: View {
                 .buttonStyle(.plain)
                 .disabled(!model.isLinked)
                 .help("Import a script from Google Sheets, Docs, or a file")
+            Button { model.previewRefresh() } label: { headerIcon("arrow.triangle.2.circlepath") }
+                .buttonStyle(.plain)
+                .disabled(model.selectedScriptId == nil || model.job != .none)
+                .help("Refresh from the script's source after it was revised")
             Button { model.reload() } label: { headerIcon("arrow.clockwise") }
                 .buttonStyle(.plain)
                 .disabled(model.status == .loading || !model.isLinked)
@@ -232,8 +239,14 @@ private struct BeatCard: View {
                     Text(scene).lineLimit(1).foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
                 Spacer(minLength: 0)
-                Text(StoryboardTab.coverageName(beat.coverage))
-                    .foregroundStyle(StoryboardTab.color(beat.coverage))
+                if beat.matched == false, beat.coverage != .scriptGap {
+                    Text("Needs re-match")
+                        .foregroundStyle(AppTheme.Status.warningColor)
+                        .help("The script changed this beat after it was matched. Run matching again.")
+                } else {
+                    Text(StoryboardTab.coverageName(beat.coverage))
+                        .foregroundStyle(StoryboardTab.color(beat.coverage))
+                }
                 if let duration = beat.durationSeconds {
                     Text(StoryboardTab.timing(duration)).foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
