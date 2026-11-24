@@ -165,13 +165,18 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .getMedia,
-            description: "The library inventory: media assets, folders, and timelines. Call before referencing any asset — every mediaRef in other tools comes from the asset ids returned here. Assets report name, type, durationSeconds, width/height/fps, hasAudio, folder path, and (for AI-generated assets) the generation prompt as a content hint. generationStatus appears only while an async generation/import is unresolved (preparing | generating | downloading | failed) — its absence means the asset is ready.\n\nFilters: ids (poll specific placeholders cheaply), folder (a path; includes subfolders), pending:true (only unresolved generations/imports). Filtered reads return just the matching assets; unfiltered reads also include folders (as paths) and timelines.",
+            description: "The library inventory: media assets, folders, and timelines. Call before referencing any asset — every mediaRef in other tools comes from the asset ids returned here. Assets report name, type, durationSeconds, width/height/fps, hasAudio, folder path, footageId (the NUEDIT footage id for camera footage registered with the tower — place that footage by this asset's mediaRef instead of importing it again), and (for AI-generated assets) the generation prompt as a content hint. generationStatus appears only while an async generation/import is unresolved (preparing | generating | downloading | failed) — its absence means the asset is ready.\n\nFilters: ids (poll specific placeholders cheaply), folder (a path; includes subfolders), pending:true (only unresolved generations/imports). Filtered reads return just the matching assets; unfiltered reads also include folders (as paths) and timelines.",
             inputSchema: objectSchema(
                 properties: [
                     "ids": [
                         "type": "array",
                         "items": ["type": "string"],
                         "description": "Optional. Return only these asset ids — the cheap way to poll a generation placeholder.",
+                    ],
+                    "footageIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "description": "Optional. Return only assets registered as these NUEDIT footage ids — how NUEDIT finds the mediaRef for footage it already knows. Ids with no asset here are simply absent.",
                     ],
                     "folder": ["type": "string", "description": "Optional folder path filter, e.g. 'B-roll/Sunset'. Includes subfolders."],
                     "pending": ["type": "boolean", "description": "Optional. true returns only assets with an unresolved generationStatus."],

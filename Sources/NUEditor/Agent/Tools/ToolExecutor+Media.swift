@@ -4,7 +4,7 @@ import ImageIO
 
 // get_media (library inventory) and inspect_media (frames, EXIF, transcription per asset).
 extension ToolExecutor {
-    private static let getMediaAllowedKeys: Set<String> = ["ids", "folder", "pending"]
+    private static let getMediaAllowedKeys: Set<String> = ["ids", "footageIds", "folder", "pending"]
     private static let getMediaPromptLimit = 100
 
     private static let inspectMediaAllowedKeys: Set<String> = [
@@ -20,6 +20,7 @@ extension ToolExecutor {
     func getMedia(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.getMediaAllowedKeys, path: "get_media")
         let idFilter = Set(args.stringArray("ids"))
+        let footageFilter = Set(args.stringArray("footageIds"))
         let pendingOnly = args["pending"] as? Bool ?? false
         var folderScope: Set<String>?
         if let folderPath = args.string("folder") {
@@ -30,6 +31,7 @@ extension ToolExecutor {
         var assets: [[String: Any]] = []
         for entry in editor.mediaManifest.entries {
             if !idFilter.isEmpty && !idFilter.contains(entry.id) { continue }
+            if !footageFilter.isEmpty, !(entry.footageId.map(footageFilter.contains) ?? false) { continue }
             let status = entry.generationStatus
             let pending = status != nil && status != "none"
             if pendingOnly && !pending { continue }
@@ -42,6 +44,7 @@ extension ToolExecutor {
             if let fps = entry.sourceFPS { a["fps"] = fps }
             if entry.hasAudio == true, entry.type == .video { a["hasAudio"] = true }
             if let path = folderPathString(entry.folderId, editor: editor) { a["folder"] = path }
+            if let footageId = entry.footageId { a["footageId"] = footageId }
             if pending, let status { a["generationStatus"] = status }
             if !idFilter.isEmpty, let status, status.hasPrefix("failed: ") {
                 feedbackState.recordError(String(status.dropFirst("failed: ".count)))
@@ -52,7 +55,7 @@ extension ToolExecutor {
 
         var payload: [String: Any] = ["assets": assets]
         // Full inventory only on unfiltered reads; filtered reads (polling) stay minimal.
-        if idFilter.isEmpty && !pendingOnly && folderScope == nil {
+        if idFilter.isEmpty && footageFilter.isEmpty && !pendingOnly && folderScope == nil {
             let folderPaths = allFolderPaths(editor)
             if !folderPaths.isEmpty { payload["folders"] = folderPaths }
             payload["timelines"] = timelineEntries(editor, detailed: true)

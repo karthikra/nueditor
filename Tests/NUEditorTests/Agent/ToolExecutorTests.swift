@@ -564,6 +564,30 @@ struct ToolExecutorReadOnlyTests {
         #expect(timelines?.first?["active"] as? Bool == true)
     }
 
+    // NUEDIT places footage it already knows by the editor's mediaRef instead of uploading it again.
+    @Test func getMediaFindsAssetsByTheirNUEDITFootageId() async throws {
+        let h = ToolHarness()
+        func entry(_ id: String, footage: String?) -> MediaManifestEntry {
+            var e = MediaManifestEntry(
+                id: id, name: id, type: .video, source: .external(absolutePath: "/tmp/\(id).mov"), duration: 4,
+                generationInput: nil, sourceWidth: nil, sourceHeight: nil, sourceFPS: nil, hasAudio: nil,
+                folderId: nil, cachedRemoteURL: nil, cachedRemoteURLExpiresAt: nil
+            )
+            e.footageId = footage
+            return e
+        }
+        h.editor.mediaManifest.entries = [entry("a-1", footage: "f-1"), entry("a-2", footage: "f-2"), entry("a-3", footage: nil)]
+
+        let all = try await h.runOK("get_media") as? [String: Any]
+        let footage = (all?["assets"] as? [[String: Any]])?.map { $0["footageId"] as? String }
+        #expect(footage == ["f-1", "f-2", nil])
+
+        let found = try await h.runOK("get_media", args: ["footageIds": ["f-2", "f-unknown"]]) as? [String: Any]
+        let assets = found?["assets"] as? [[String: Any]]
+        #expect(assets?.map { $0["id"] as? String } == ["a-2"])
+        #expect(found?["timelines"] == nil)
+    }
+
     @Test func getMediaRoundsFloatingPointNumbersToThreeDecimalPlaces() async throws {
         let h = ToolHarness()
         var input = GenerationInput(
