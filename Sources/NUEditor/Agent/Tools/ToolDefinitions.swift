@@ -44,6 +44,10 @@ enum ToolName: String, CaseIterable, Sendable {
     // Edge ingest
     case towerLink = "tower_link"
 
+    // Markers
+    case addMarkers = "add_markers"
+    case removeMarkers = "remove_markers"
+
     // Transcript
     case getTranscript = "get_transcript"
     case removeWords = "remove_words"
@@ -723,6 +727,43 @@ enum ToolDefinitions {
                         "description": "How much silence to leave between the words on either side of a cut. 'tight' butts them close (snappy, can feel clipped), 'balanced' (default) keeps a natural beat, 'loose' leaves more breathing room. The removed words' own frames always go regardless.",
                     ],
                     "language": ["type": "string", "description": "Optional BCP-47 speech language for local transcription. Omit to reuse the previous get_transcript language."],
+                ],
+                required: []
+            )
+        ),
+        AgentTool(
+            name: .addMarkers,
+            description: "Pin markers to a timeline: notes for whoever edits next, at a point or over a range, in project frames. Each marker has a kind that says what it flags: note (anything), missing (a beat with no usable footage — the cut needs a shot here), low_confidence (footage placed on a weak match — check it), script_gap (the script gives no visual for this beat — ask the writer), alternate (another take that could go here). Markers stay at their frames when clips move. All entries are validated before any is added, and the call is one undoable action. Omit timelineId for the active timeline. Returns each marker's id for remove_markers; get_timeline lists a timeline's markers.",
+            inputSchema: objectSchema(
+                properties: [
+                    "timelineId": ["type": "string", "description": "Optional. The timeline to mark; defaults to the active one."],
+                    "entries": [
+                        "type": "array",
+                        "description": "Markers to add (at most 1000).",
+                        "items": [
+                            "type": "object",
+                            "properties": [
+                                "frame": ["type": "integer", "description": "Project frame the marker starts at (>= 0)."],
+                                "durationFrames": ["type": "integer", "description": "Optional. Frames the marker spans; 0 or omitted marks a single point."],
+                                "kind": ["type": "string", "enum": TimelineMarker.Kind.allCases.map(\.rawValue), "description": "Optional, default note."],
+                                "text": ["type": "string", "description": "Optional. What the marker says, e.g. the beat and what's missing."],
+                            ],
+                            "required": ["frame"],
+                        ],
+                    ],
+                ],
+                required: ["entries"]
+            )
+        ),
+        AgentTool(
+            name: .removeMarkers,
+            description: "Remove markers from a timeline, as one undoable action. Pass exactly one of: ids (from add_markers or get_timeline), kinds (e.g. [\"missing\"] once the gaps are filled), or all: true. Reports what was removed, changed: false when nothing matched, and notFound for ids that weren't there.",
+            inputSchema: objectSchema(
+                properties: [
+                    "timelineId": ["type": "string", "description": "Optional. Defaults to the active timeline."],
+                    "ids": ["type": "array", "items": ["type": "string"], "description": "Marker ids to remove."],
+                    "kinds": ["type": "array", "items": ["type": "string", "enum": TimelineMarker.Kind.allCases.map(\.rawValue)], "description": "Remove every marker of these kinds."],
+                    "all": ["type": "boolean", "description": "true removes every marker on the timeline."],
                 ],
                 required: []
             )

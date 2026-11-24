@@ -274,6 +274,7 @@ final class TimelineView: NSView {
             fps: editor.timeline.fps,
             pixelsPerFrame: geo.pixelsPerFrame,
             scrollOffsetX: scrollOffset.x,
+            markers: editor.timeline.markers,
             context: ctx
         )
         drawTimelineRangeSelectionRulerFill(geometry: geo, scrollOffset: scrollOffset, context: ctx)

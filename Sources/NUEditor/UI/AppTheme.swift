@@ -354,6 +354,24 @@ enum AppTheme {
         static let contextRowHeight: CGFloat = IconSize.md
     }
 
+    enum Marker {
+        static let flagWidth: CGFloat = 7
+        static let flagHeight: CGFloat = 8
+        static let rangeBarHeight: CGFloat = 3
+        /// Below this much room before the next marker, a label is left out rather than overlapped.
+        static let minimumLabelWidth: CGFloat = 36
+
+        static func color(_ kind: TimelineMarker.Kind) -> NSColor {
+            switch kind {
+            case .note: Text.secondary
+            case .missing: Status.error
+            case .lowConfidence: Status.warning
+            case .scriptGap: NSColor.systemPurple
+            case .alternate: NSColor.systemTeal
+            }
+        }
+    }
+
     enum Storyboard {
         static let cardFrameHeight: CGFloat = 108
         static let matchThumbWidth: CGFloat = 64

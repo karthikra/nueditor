@@ -22,6 +22,11 @@ extension ToolExecutor {
         dict["fpsRational"] = "\(rate.rational.numerator)/\(rate.rational.denominator)"
         if let window {
             dict["window"] = [window.lowerBound, min(window.upperBound, editor.timeline.totalFrames)]
+            dict["markers"] = editor.timeline.markers
+                .filter { $0.endFrame >= window.lowerBound && $0.frame <= window.upperBound }
+                .map(Self.markerJSON)
+        } else {
+            dict["markers"] = editor.timeline.markers.map(Self.markerJSON)
         }
         dict["currentFrame"] = editor.currentFrame
         dict["canGenerate"] = Self.canGenerate

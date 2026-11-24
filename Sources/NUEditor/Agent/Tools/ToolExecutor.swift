@@ -244,6 +244,8 @@ final class ToolExecutor {
         case .splitClips:       return try splitClips(editor, args)
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
         case .towerLink:     return try await towerLink(editor, args)
+        case .addMarkers:    return try addMarkers(editor, args)
+        case .removeMarkers: return try removeMarkers(editor, args)
         case .removeWords:   return try await removeWords(editor, args)
         case .removeSilence: return try removeSilence(editor, args)
         case .syncClips:     return try await syncClips(editor, args)

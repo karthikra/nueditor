@@ -7,6 +7,7 @@ enum TimelineRuler {
         fps: Int,
         pixelsPerFrame: Double,
         scrollOffsetX: CGFloat,
+        markers: [TimelineMarker] = [],
         context: CGContext
     ) {
         // Background
@@ -80,6 +81,47 @@ enum TimelineRuler {
             str.draw(at: NSPoint(x: x + 3, y: rect.minY + 2))
 
             frame += framesPerMajor
+        }
+
+        drawMarkers(markers, in: rect, pixelsPerFrame: pixelsPerFrame, scrollOffsetX: scrollOffsetX, context: context)
+    }
+
+    /// A flag per marker on the ruler, a bar along its foot for a range, and the marker's text when it fits.
+    private static func drawMarkers(
+        _ markers: [TimelineMarker], in rect: NSRect, pixelsPerFrame: Double, scrollOffsetX: CGFloat, context: CGContext
+    ) {
+        guard !markers.isEmpty else { return }
+        let firstVisible = Int(scrollOffsetX / pixelsPerFrame)
+        let lastVisible = Int((scrollOffsetX + rect.width) / pixelsPerFrame) + 1
+        let font = NSFont.systemFont(ofSize: AppTheme.FontSize.xxs, weight: .medium)
+        let flagWidth = AppTheme.Marker.flagWidth, flagHeight = AppTheme.Marker.flagHeight
+
+        for (index, marker) in markers.enumerated() where marker.endFrame >= firstVisible && marker.frame <= lastVisible {
+            let color = AppTheme.Marker.color(marker.kind)
+            let x = Double(rect.minX) + Double(marker.frame) * pixelsPerFrame - Double(scrollOffsetX)
+            context.setFillColor(color.cgColor)
+            if marker.durationFrames > 0 {
+                let width = max(1, Double(marker.durationFrames) * pixelsPerFrame)
+                context.fill(CGRect(x: x, y: Double(rect.maxY) - AppTheme.Marker.rangeBarHeight,
+                                    width: width, height: AppTheme.Marker.rangeBarHeight))
+            }
+            context.beginPath()
+            context.move(to: CGPoint(x: x, y: Double(rect.minY)))
+            context.addLine(to: CGPoint(x: x + flagWidth, y: Double(rect.minY) + flagHeight / 2))
+            context.addLine(to: CGPoint(x: x, y: Double(rect.minY) + flagHeight))
+            context.closePath()
+            context.fillPath()
+            context.fill(CGRect(x: x, y: Double(rect.minY), width: 1, height: Double(rect.height)))
+
+            guard !marker.text.isEmpty else { continue }
+            let nextX = index + 1 < markers.count
+                ? Double(rect.minX) + Double(markers[index + 1].frame) * pixelsPerFrame - Double(scrollOffsetX)
+                : Double(rect.maxX)
+            let room = nextX - x - flagWidth - 4
+            guard room >= AppTheme.Marker.minimumLabelWidth else { continue }
+            let label = NSAttributedString(string: marker.text, attributes: [.font: font, .foregroundColor: color])
+            label.draw(with: NSRect(x: x + flagWidth + 2, y: Double(rect.minY), width: room, height: flagHeight + 4),
+                       options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
     }
 

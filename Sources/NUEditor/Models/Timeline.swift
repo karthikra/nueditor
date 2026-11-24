@@ -25,6 +25,8 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
     var settingsConfigured: Bool = false
     var folderId: String?
     var tracks: [Track] = []
+    /// Kept sorted by frame.
+    var markers: [TimelineMarker] = []
 
     /// The exact rate. Every conversion between frames and time goes through this.
     var frameRate: FrameRate { FrameRate(nominal: fps, isNTSC: ntsc) }
@@ -66,7 +68,7 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, fps, ntsc, width, height, settingsConfigured, folderId, tracks
+        case id, name, fps, ntsc, width, height, settingsConfigured, folderId, tracks, markers
     }
 }
 
@@ -82,7 +84,8 @@ extension Timeline {
             height: try c.decode(Int.self, forKey: .height),
             settingsConfigured: (try? c.decode(Bool.self, forKey: .settingsConfigured)) ?? false,
             folderId: try? c.decode(String.self, forKey: .folderId),
-            tracks: try c.decode([Track].self, forKey: .tracks)
+            tracks: try c.decode([Track].self, forKey: .tracks),
+            markers: (try? c.decodeIfPresent([TimelineMarker].self, forKey: .markers)) ?? []
         )
     }
 }
